@@ -20,7 +20,11 @@ class Wing:
         # "7 rooms on either side of the central large shared bathroom"
         # Sequence: 7 Rooms, Bathroom, 7 Rooms.
         
-    def generate(self, level, lawn, floor_height=0, ceil_height=128):
+    def generate(self, level, lawn, floor_height=0, ceil_height=128, story_tag: int = 0):
+        # If we are creating a 3D-floor second story inside these sectors, the
+        # ceiling must be higher than the 2nd-floor height.
+        if story_tag:
+            ceil_height = max(int(ceil_height), 320)
         # Calculate dimensions
         # We build vertically (North-South)
         
@@ -63,13 +67,15 @@ class Wing:
         corridor = level.add_room(Corridor(corridor_x, self.y, self.corridor_width, total_height))
         corridor.floor_height = floor_height
         corridor.ceil_height = ceil_height
+        if story_tag:
+            corridor.tag = int(story_tag)
         
         # 2. Generate Rooms & Bathroom
         current_y = self.y + self.wall_thickness
         
         # First block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
             current_y += self.room_height + self.wall_thickness
             
         # Bathroom (Central)
@@ -78,6 +84,8 @@ class Wing:
         bathroom = level.add_room(Bathroom(rooms_x, current_y, self.room_width, bath_height))
         bathroom.floor_height = floor_height
         bathroom.ceil_height = ceil_height
+        if story_tag:
+            bathroom.tag = int(story_tag)
         
         # Door to Bathroom
         door_y = current_y + (bath_height // 2) - 32
@@ -92,7 +100,7 @@ class Wing:
         
         # Second block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
             current_y += self.room_height + self.wall_thickness
             
         # 3. Corridor Windows to Lawn
@@ -124,10 +132,12 @@ class Wing:
             
         return corridor
 
-    def _create_room(self, level, x, y, corridor, door_side, lawn=None, floor_height=0, ceil_height=128):
+    def _create_room(self, level, x, y, corridor, door_side, lawn=None, floor_height=0, ceil_height=128, story_tag: int = 0):
         room = level.add_room(Bedroom(x, y, self.room_width, self.room_height))
         room.floor_height = floor_height
         room.ceil_height = ceil_height
+        if story_tag:
+            room.tag = int(story_tag)
         
         # Door to Corridor
         # Centered vertically relative to room

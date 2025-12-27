@@ -58,6 +58,26 @@ class Door(Connector):
         
         # Capture the sector index before drawing (it will be the next one appended)
         door_sector_index = len(builder.editor.sectors)
+
+        # Doors must be operable from either side. To avoid depending on linedef
+        # front/back orientation, we assign the door sector a (usually unique)
+        # tag and have the door linedefs target that tag.
+        #
+        # If both adjacent rooms share a non-zero tag (used here as the "story" tag
+        # for the 3D-floor second story), we still want the door sector to receive
+        # the 3D floor even if we give it a unique action tag.
+        shared_story_tag = 0
+        t1 = getattr(self.room1, 'tag', 0) if self.room1 is not None else 0
+        t2 = getattr(self.room2, 'tag', 0) if self.room2 is not None else 0
+        if t1 and t1 == t2:
+            shared_story_tag = int(t1)
+
+        if self.tag:
+            door_sector_tag = int(self.tag)
+        else:
+            door_sector_tag = int(builder.alloc_sector_tag())
+            if shared_story_tag:
+                builder.register_extra_3d_floor_target_tag(door_sector_tag)
         
         points = [
             (self.x, self.y),
@@ -72,7 +92,7 @@ class Door(Connector):
                              wall_tex="DOORTRAK", # Side walls
                              floor_height=base_floor, 
                              ceil_height=ceil_h,
-                             tag=self.tag) # Closed or Open
+                             tag=door_sector_tag) # Closed or Open
                              
         # Iterate ALL linedefs to find those belonging to this door
         for ld in builder.editor.linedefs:
@@ -102,8 +122,9 @@ class Door(Connector):
                 # Set Action (optional)
                 if self.linedef_action is not None and self.linedef_action != 0:
                     ld.action = self.linedef_action
-                if self.tag:
-                    ld.tag = self.tag
+                # Always set a tag so the UDMF conversion can target the door sector
+                # reliably from either side.
+                ld.tag = int(door_sector_tag)
                 # Set Unpegged
                 ld.upper_unpeg = True
                 pass
@@ -175,12 +196,21 @@ class Window(Connector):
         elif getattr(self.room2, 'floor_height', None) is not None:
             base_floor = self.room2.floor_height
 
+        # If both adjacent rooms share the same non-zero tag, propagate it so
+        # UDMF 3D floors can span through this opening.
+        window_tag = 0
+        t1 = getattr(self.room1, 'tag', 0) if self.room1 is not None else 0
+        t2 = getattr(self.room2, 'tag', 0) if self.room2 is not None else 0
+        if t1 and t1 == t2:
+            window_tag = int(t1)
+
         builder.draw_polygon(points, 
                              floor_tex=self.floor_tex, 
                              ceil_tex=self.ceil_tex, 
                              wall_tex=self.wall_tex, # Side walls (jambs)
                              floor_height=base_floor + self.sill_height, 
-                             ceil_height=base_floor + self.sill_height + self.window_height)
+                             ceil_height=base_floor + self.sill_height + self.window_height,
+                             tag=window_tag)
                              
         # Iterate ALL linedefs to find those belonging to this window
         for ld in builder.editor.linedefs:
@@ -193,12 +223,16 @@ class Window(Connector):
             
             # Case 1: Front is Window, Back is Room.
             if front_sector == window_sector_index and back_sector != -1 and back_sector != window_sector_index:
+                # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
+                builder.editor.sidedefs[ld.front].tx_mid = "-"
                 builder.editor.sidedefs[ld.back].tx_mid = "-"
                 is_window_face = True
                 
             # Case 2: Back is Window, Front is Room.
             elif back_sector == window_sector_index and front_sector != window_sector_index:
+                # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
                 builder.editor.sidedefs[ld.front].tx_mid = "-"
+                builder.editor.sidedefs[ld.back].tx_mid = "-"
                 is_window_face = True
                 
             if is_window_face:

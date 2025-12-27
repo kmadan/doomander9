@@ -24,8 +24,40 @@ class WadBuilder:
         #   type/flags/alpha: Sector_Set3dFloor args
         self._udmf_3dfloor_specs: list[dict] = []
 
+        # Teleport destination postprocess: in classic Doom format, things don't
+        # have TIDs. We record the teleport destination coordinates during build
+        # and assign the UDMF thing `id` after conversion.
+        self._udmf_teleport_dest_specs: list[dict] = []
+
+        # Extra sector tags that should also receive the in-building 3D floor.
+        # This is used when we must give some sectors (e.g. door sectors) unique
+        # tags for actions, but still want them to have the second-story 3D floor.
+        self._udmf_extra_3dfloor_target_tags: set[int] = set()
+
+        # Unique sector tags allocated during build (avoid clashing with Level tags).
+        self._next_sector_tag: int = 1000
+
         # Unique ids for UDMF postprocess control linedefs.
         self._next_control_line_id: int = 10000
+
+    def alloc_sector_tag(self) -> int:
+        tag = int(self._next_sector_tag)
+        self._next_sector_tag += 1
+        return tag
+
+    def register_extra_3d_floor_target_tag(self, tag: int):
+        if tag:
+            self._udmf_extra_3dfloor_target_tags.add(int(tag))
+
+    def get_extra_3d_floor_target_tags(self) -> set[int]:
+        return set(self._udmf_extra_3dfloor_target_tags)
+
+    def register_teleport_destination(self, *, x: int, y: int, tid: int):
+        self._udmf_teleport_dest_specs.append({
+            'x': int(x),
+            'y': int(y),
+            'tid': int(tid),
+        })
 
     def register_udmf_3d_floor(self, *, control_line_id: int, target_sector_tag: int, type: int = 1, flags: int = 0, alpha: int = 255):
         self._udmf_3dfloor_specs.append({
@@ -162,8 +194,9 @@ class WadBuilder:
             # 1 in Doom format = DR Door (open-wait-close)
             if getattr(ld, 'special', 0) == 1:
                 # Map to Door_Raise(tag, speed, delay, lighttag)
+                door_tag = int(getattr(ld, 'arg0', 0))
                 ld.special = 12
-                ld.arg0 = 0      # tag=0 => use sector on back side
+                ld.arg0 = door_tag
                 ld.arg1 = 16     # speed
                 ld.arg2 = 150    # delay
                 ld.arg3 = 0      # lighttag
@@ -190,17 +223,33 @@ class WadBuilder:
             # 97 in Doom format = WR Teleport
             elif getattr(ld, 'special', 0) == 97:
                 # Converter stores the original Doom tag in ld.arg0.
-                dest_tag = getattr(ld, 'arg0', 0)
+                # Use Teleport(tid, 0) to avoid any dependence on sector-tag lookup.
+                dest_tag = int(getattr(ld, 'arg0', 0))
+                dest_tid = 1000 + dest_tag
                 # Map to Teleport(tid, tag, nosourcefog)
                 ld.special = 70
-                ld.arg0 = 0
-                ld.arg1 = dest_tag
+                ld.arg0 = dest_tid
+                ld.arg1 = 0
                 ld.arg2 = 0
                 ld.arg3 = 0
                 ld.arg4 = 0
                 ld.playercross = True
                 ld.repeatspecial = True
                 ld.monsteractivate = True
+
+        # Assign TIDs to teleport destination things (TeleportDest, DoomEdNum 14).
+        # Match by exact coordinates (the generator uses integer coordinates).
+        for spec in self._udmf_teleport_dest_specs:
+            target_x = float(spec['x'])
+            target_y = float(spec['y'])
+            matched = False
+            for th in umap.things:
+                if getattr(th, 'type', 0) == 14 and getattr(th, 'x', None) == target_x and getattr(th, 'y', None) == target_y:
+                    th.id = int(spec['tid'])
+                    matched = True
+                    break
+            if not matched:
+                raise RuntimeError(f"UDMF postprocess failed: could not find TeleportDest at ({spec['x']}, {spec['y']})")
 
         # Apply any requested 3D-floor control linedefs.
         # Our control lines are created in classic format with a unique linedef tag.

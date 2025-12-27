@@ -21,22 +21,33 @@ def main():
     print("Building Level...")
     level.build(builder)
 
-    # Visible "second floor" over the lawn (UDMF 3D floor).
-    # The actual playable second-floor wings are still connected via the stair teleports,
-    # but this makes the upper level visible from the lawn.
-    if hasattr(level, "lawn_tag"):
-        builder.add_3d_floor_platform(
-            target_sector_tag=level.lawn_tag,
-            z=140,
-            thickness=16,
-            floor_tex="FLOOR4_8",
-            ceil_tex="CEIL3_5",
-            wall_tex="STARTAN3",
-        )
+    # Real 2nd story inside the building (UDMF 3D floor), not over the lawn.
+    # Some sectors (notably door sectors) need unique tags for reliable door
+    # behavior; we still apply the 3D floor to those tags too.
+    if hasattr(level, "second_floor_tag"):
+        tags = {int(level.second_floor_tag)}
+        tags |= set(getattr(builder, "get_extra_3d_floor_target_tags", lambda: set())())
+        for t in sorted(tags):
+            builder.add_3d_floor_platform(
+                target_sector_tag=t,
+                z=140,
+                thickness=16,
+                floor_tex="FLOOR4_8",
+                ceil_tex="CEIL3_5",
+                wall_tex="STARTAN3",
+            )
     
     print("Adding Player Start...")
-    # Place player in the corridor
-    builder.add_player_start(128, 64, 0)
+    # Spawn point is chosen by the generator (for fast iteration/testing).
+    spawn = getattr(level, "test_spawn", None)
+    if spawn and isinstance(spawn, (tuple, list)) and len(spawn) >= 2:
+        sx = int(spawn[0])
+        sy = int(spawn[1])
+        sa = int(spawn[2]) if len(spawn) >= 3 else 0
+        builder.add_player_start(sx, sy, sa)
+    else:
+        # Fallback: a safe spot in the lawn.
+        builder.add_player_start(256, 64, 0)
 
     # Always-visible debugging labels.
     

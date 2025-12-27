@@ -52,6 +52,12 @@ class Plant(Furniture):
 
 
 class TeleportDestination(Furniture):
-    def __init__(self, x, y, angle=0):
+    def __init__(self, x, y, angle=0, tid: int | None = None):
         # Doom thing 14 = Teleport Landing
         super().__init__(x, y, 14, angle)
+        self.tid = tid
+
+    def build(self, builder):
+        super().build(builder)
+        if self.tid is not None:
+            builder.register_teleport_destination(x=int(self.x), y=int(self.y), tid=int(self.tid))

@@ -41,7 +41,7 @@ class WadBuilder:
         
         self.editor.draw_sector(points, sector, sidedef)
 
-    def draw_polygon(self, points, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3", floor_height=0, ceil_height=128, light=160):
+    def draw_polygon(self, points, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3", floor_height=0, ceil_height=128, light=160, tag=0):
         """
         Draws a polygonal sector from a list of (x, y) tuples.
         Points should be in Counter-Clockwise order.
@@ -52,6 +52,7 @@ class WadBuilder:
         sector.z_floor = floor_height
         sector.z_ceil = ceil_height
         sector.light = light
+        sector.tag = tag
         
         sidedef = Sidedef()
         sidedef.tx_mid = wall_tex

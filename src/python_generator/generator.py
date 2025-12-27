@@ -254,6 +254,43 @@ class Window(Connector):
                 # But we must ensure the linedef is two-sided (it is).
                 pass
 
+class Wing:
+    def __init__(self, x, y, num_rooms, room_width=128, room_height=128, corridor_width=64, wall_thickness=16):
+        self.x = x
+        self.y = y
+        self.num_rooms = num_rooms
+        self.room_width = room_width
+        self.room_height = room_height
+        self.corridor_width = corridor_width
+        self.wall_thickness = wall_thickness
+        self.rooms = []
+        self.corridor = None
+        
+    def generate(self, level):
+        # Create Corridor
+        # Length = (Room Width + Wall) * Num Rooms + Wall
+        total_length = (self.room_width + self.wall_thickness) * self.num_rooms + self.wall_thickness
+        
+        # Corridor is below the rooms
+        corridor_y = self.y - self.corridor_width - self.wall_thickness
+        self.corridor = level.add_room(Corridor(self.x, corridor_y, total_length, self.corridor_width))
+        
+        current_x = self.x + self.wall_thickness
+        
+        for i in range(self.num_rooms):
+            # Create Room
+            room = level.add_room(Room(current_x, self.y, self.room_width, self.room_height))
+            self.rooms.append(room)
+            
+            # Create Door connecting Room to Corridor
+            # Door X centered in room
+            door_x = current_x + (self.room_width // 2) - 32 # 64 width door
+            door_y = self.y - self.wall_thickness
+            
+            level.add_door(Door(door_x, door_y, 64, self.wall_thickness, room, self.corridor))
+            
+            current_x += self.room_width + self.wall_thickness
+
 class Corridor(Room):
     def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5"):
         super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex)

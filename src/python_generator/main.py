@@ -1,6 +1,6 @@
 import os
 from builder import WadBuilder
-from generator import Level, Room, Door, Corridor, Lawn, Window
+from generator import Level, Room, Door, Corridor, Lawn, Window, Wing
 
 def main():
     print("Initializing WadBuilder...")
@@ -9,42 +9,37 @@ def main():
     level = Level()
     
     print("Creating Layout...")
-    # Scale Factor: 3x
+    
+    # --- Manual Test Area ---
     
     # Room A (Hostel Room)
-    # Original: 128x128 -> New: 384x384
     room_a = level.add_room(Room(0, 0, 384, 384, floor_tex="FLOOR0_1", wall_tex="BROWN96"))
     
-    # Corridor
-    # Original: 256x128 -> New: 768x384
-    # Position: X=144 -> X=432 (384 + 48 gap? No, let's align it)
-    # Let's place Corridor to the Right of Room A with a wall in between.
-    # Room A ends at X=384.
-    # Let's put Corridor at X=400 (16 unit wall thickness).
+    # Corridor (Right)
     corridor = level.add_room(Corridor(400, 0, 768, 384, floor_tex="CEIL5_2", wall_tex="STONE2"))
     
-    # Door connecting Room A and Corridor
-    # Position: X=384, Y=160 (Centered vertically in Room A? 384/2 = 192. Door width 64. Y=192-32=160)
-    # Size: 16x64
+    # Door connecting Room A and Corridor (Right Wall)
     level.add_door(Door(384, 160, 16, 64, room_a, corridor))
     
-    # Window connecting Room A and Corridor (just for fun/testing)
-    # Position: X=384, Y=256
-    # Size: 16x64
-    level.add_window(Window(384, 256, 16, 64, room_a, corridor, sill_height=48, window_height=64))
+    # Lawn (Left) - For the window to look at
+    # Room A X=0. Lawn ends at X=-16.
+    lawn_left = level.add_room(Lawn(-400, 0, 384, 384, floor_tex="RROCK19", wall_tex="BRICK7"))
     
-    # Lawn
-    # Original: 256x256 -> New: 768x768
-    # Position: Right of Corridor? Or Below?
-    # Let's put it below the Corridor.
-    # Corridor Y=0 to 384.
-    # Lawn Y = -784 (768 + 16 wall).
-    lawn = level.add_room(Lawn(400, -784, 768, 768, floor_tex="RROCK19", wall_tex="BRICK7"))
+    # Window connecting Room A and Lawn (Left Wall)
+    # Position: X=-16, Y=160
+    level.add_window(Window(-16, 160, 16, 64, lawn_left, room_a, sill_height=48, window_height=64))
     
-    # Door connecting Corridor and Lawn
-    # Position: X=784 (Centered in Corridor X=400+384=784), Y=-16 (Between 0 and -16)
-    # Size: 64x16
-    level.add_door(Door(752, -16, 64, 16, corridor, lawn, texture="SP_DUDE4"))
+    # Lawn (Bottom)
+    lawn_bottom = level.add_room(Lawn(400, -784, 768, 768, floor_tex="RROCK19", wall_tex="BRICK7"))
+    
+    # Door connecting Corridor and Lawn Bottom
+    level.add_door(Door(752, -16, 64, 16, corridor, lawn_bottom, texture="SP_DUDE4"))
+    
+    # --- Procedural Wing Test ---
+    print("Generating Wing...")
+    # Place a wing somewhere else, e.g., above Room A
+    wing = Wing(x=0, y=512, num_rooms=3, room_width=256, room_height=256)
+    wing.generate(level)
     
     print("Building Level...")
     level.build(builder)

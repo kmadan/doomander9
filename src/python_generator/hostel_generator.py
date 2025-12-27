@@ -1,6 +1,6 @@
 from modules.level import Level
 from modules.geometry import Corridor, Lawn, Room
-from modules.connectors import Door, Switch, Window
+from modules.connectors import Door, Switch, Window, Portal
 from modules.prefabs import Bedroom, CommonRoom, Bathroom
 from modules.wing import Wing
  
@@ -25,20 +25,16 @@ class HostelGenerator:
         # 1. Create Central Lawn
         lawn = self.level.add_room(Lawn(self.start_x, self.start_y, lawn_width, lawn_height))
 
-        # A shared tag applied to wing sectors so we can add a real 2nd-story 3D floor
-        # *inside the building*, without covering the lawn (sky stays visible).
-        self.level.second_floor_tag = self.level.get_new_tag()
-        
         # 2. Generate Left Wing (West)
         left_wing_x = self.start_x - 128 - 16
         left_wing = Wing(left_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
-        left_corridor = left_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=self.level.second_floor_tag)
+        left_corridor = left_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
         
         # 3. Generate Right Wing (East)
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)
         right_rooms_x = self.start_x + lawn_width + 16
         right_wing = Wing(right_rooms_x, self.start_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        right_corridor = right_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=self.level.second_floor_tag)
+        right_corridor = right_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
         
         # 4. Cross Corridor (North)
         # Connects Left Wing, Right Wing, Lawn, and Mess Hall
@@ -114,20 +110,33 @@ class HostelGenerator:
         switch2_y = self.start_y + 64
         self.level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag))
 
-        # 7. Stairs to the real 2nd story (no teleports)
-        # Build the staircase on the *outer* side of the right corridor (no corridor windows there),
-        # and use a small tagged "hall" sector so you can step from the stair top onto the
-        # 3D-floor second story inside the corridor.
+        # 7. Stairs + off-map 2nd floor connected via line portals
+        # The 2nd floor is a separate copy of the building placed off-map, so doors
+        # are fully independent per floor. We connect at the top of the stairs using
+        # Line_SetPortal so it feels seamless.
         stair_w = 64
         step_depth = 64
         steps = 7
         rise = 20
 
-        def add_stairwell_to_corridor(src_corridor, side_dir: int, *, set_spawn: bool):
+        # Off-map placement for the 2nd floor so it is visible in automap.
+        # Place it north of the main area (same X footprint).
+        second_floor_offset_y = -6000
+        second_floor_floor = steps * rise  # 140
+        second_floor_ceil = second_floor_floor + 128
+
+        # Generate a disconnected 2nd-floor copy of the wings.
+        lawn2 = self.level.add_room(Lawn(self.start_x, self.start_y + second_floor_offset_y, lawn_width, lawn_height))
+        left_wing_2 = Wing(left_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        left_corridor_2 = left_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
+        right_wing_2 = Wing(right_rooms_x, self.start_y + second_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
+        right_corridor_2 = right_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
+
+        def add_stairwell_to_corridor(src_corridor, side_dir: int, *, set_spawn: bool, portal_target_corridor=None, portal_pair_ids=None):
             attach_y = src_corridor.y + 64
             hall_h = steps * step_depth
 
-            # A thin "hall" right outside the corridor, tagged for the 3D-floor second story.
+            # A thin "hall" right outside the corridor.
             if side_dir > 0:
                 hall_x = src_corridor.x + src_corridor.width + wall_thickness
             else:
@@ -144,10 +153,10 @@ class HostelGenerator:
                 ceil_tex=src_corridor.ceil_tex,
                 floor_height=0,
                 ceil_height=320,
-                tag=self.level.second_floor_tag,
             ))
 
             # Steps adjacent to the hall, with an explicit gap + connector per step.
+            last_step_room = None
             for i in range(steps):
                 step_floor = (i + 1) * rise
                 step_y = hall_y + i * step_depth
@@ -169,6 +178,9 @@ class HostelGenerator:
                     floor_height=step_floor,
                     ceil_height=320,
                 ))
+
+                if i == steps - 1:
+                    last_step_room = step_room
 
                 # Opening between hall <-> this step slice.
                 self.level.add_connector(Window(
@@ -200,6 +212,75 @@ class HostelGenerator:
                 wall_tex=src_corridor.wall_tex,
             ))
 
+            # Landing at the top of the stairs (height 140), separated by a wall gap so it can be connected.
+            landing_y = hall_y + hall_h + wall_thickness
+            if side_dir > 0:
+                landing_x = hall_x + hall_w + wall_thickness
+            else:
+                landing_x = hall_x - wall_thickness - stair_w
+            landing_h = step_depth
+            landing = self.level.add_room(Room(
+                landing_x,
+                landing_y,
+                stair_w,
+                landing_h,
+                floor_tex=src_corridor.floor_tex,
+                wall_tex=src_corridor.wall_tex,
+                ceil_tex=src_corridor.ceil_tex,
+                floor_height=steps * rise,
+                ceil_height=320,
+            ))
+
+            # Connect the last step slice to the landing through a wall-thickness gap.
+            if last_step_room is not None:
+                self.level.add_connector(Window(
+                    landing_x,
+                    hall_y + hall_h,
+                    stair_w,
+                    wall_thickness,
+                    last_step_room,
+                    landing,
+                    sill_height=0,
+                    window_height=320,
+                    floor_tex=src_corridor.floor_tex,
+                    ceil_tex=src_corridor.ceil_tex,
+                    wall_tex=src_corridor.wall_tex,
+                ))
+
+            # Portal threshold sector beyond the landing, separated by a wall gap.
+            portal_y = landing_y + landing_h
+            threshold_y = portal_y + wall_thickness
+            threshold = self.level.add_room(Room(
+                landing_x,
+                threshold_y,
+                stair_w,
+                step_depth,
+                floor_tex=src_corridor.floor_tex,
+                wall_tex=src_corridor.wall_tex,
+                ceil_tex=src_corridor.ceil_tex,
+                floor_height=steps * rise,
+                ceil_height=320,
+            ))
+
+            if portal_target_corridor is not None and portal_pair_ids is not None:
+                src_line_id, dst_line_id = portal_pair_ids
+                # Portal between landing and threshold.
+                self.level.add_connector(Portal(
+                    landing_x,
+                    portal_y,
+                    stair_w,
+                    wall_thickness,
+                    landing,
+                    threshold,
+                    source_line_id=src_line_id,
+                    target_line_id=dst_line_id,
+                    type=1,
+                    planeanchor=1,
+                    floor_tex=src_corridor.floor_tex,
+                    ceil_tex=src_corridor.ceil_tex,
+                    wall_tex=src_corridor.wall_tex,
+                ))
+
             # Record a good test spawn at the base of the stairwell (in the hall), facing the steps.
             if set_spawn and not hasattr(self.level, "test_spawn"):
                 spawn_x = hall_x + (hall_w // 2)
@@ -207,9 +288,168 @@ class HostelGenerator:
                 spawn_angle = 0 if side_dir > 0 else 180
                 self.level.test_spawn = (int(spawn_x), int(spawn_y), int(spawn_angle))
 
-        # Right wing: corridor is on outside edge, so put stairs further outward (east)
-        add_stairwell_to_corridor(right_corridor, side_dir=1, set_spawn=True)
-        # Left wing: corridor is on lawn side, so put stairs on outside edge (west)
+        # Create a matching portal landing on the off-map second floor and connect it into the corridor.
+        def add_second_floor_portal_entry(dst_corridor, side_dir: int, *, portal_pair_ids):
+            attach_y = dst_corridor.y + 64
+            hall_h = steps * step_depth
+            if side_dir > 0:
+                hall_x = dst_corridor.x + dst_corridor.width + wall_thickness
+            else:
+                hall_x = dst_corridor.x - wall_thickness - 64
+            hall_y = attach_y
+            hall_w = 64
+            hall = self.level.add_room(Room(
+                hall_x,
+                hall_y,
+                hall_w,
+                hall_h,
+                floor_tex=dst_corridor.floor_tex,
+                wall_tex=dst_corridor.wall_tex,
+                ceil_tex=dst_corridor.ceil_tex,
+                floor_height=second_floor_floor,
+                ceil_height=second_floor_ceil,
+            ))
+
+            # Connect off-map corridor -> hall
+            self.level.add_connector(Window(
+                (dst_corridor.x + dst_corridor.width) if side_dir > 0 else (dst_corridor.x - wall_thickness),
+                hall_y,
+                wall_thickness,
+                hall_h,
+                dst_corridor,
+                hall,
+                sill_height=0,
+                window_height=second_floor_ceil - second_floor_floor,
+                floor_tex=dst_corridor.floor_tex,
+                ceil_tex=dst_corridor.ceil_tex,
+                wall_tex=dst_corridor.wall_tex,
+            ))
+
+            # Flat "step" slices (all at 2nd-floor height) so the portal landing is reachable.
+            last_step_room = None
+            for i in range(steps):
+                step_floor = second_floor_floor
+                step_y = hall_y + i * step_depth
+                if side_dir > 0:
+                    step_x = hall_x + hall_w + wall_thickness
+                    gap_x = hall_x + hall_w
+                else:
+                    step_x = hall_x - wall_thickness - stair_w
+                    gap_x = hall_x - wall_thickness
+
+                step_room = self.level.add_room(Room(
+                    step_x,
+                    step_y,
+                    stair_w,
+                    step_depth,
+                    floor_tex=dst_corridor.floor_tex,
+                    wall_tex=dst_corridor.wall_tex,
+                    ceil_tex=dst_corridor.ceil_tex,
+                    floor_height=step_floor,
+                    ceil_height=second_floor_ceil,
+                ))
+                if i == steps - 1:
+                    last_step_room = step_room
+
+                self.level.add_connector(Window(
+                    gap_x,
+                    step_y,
+                    wall_thickness,
+                    step_depth,
+                    hall,
+                    step_room,
+                    sill_height=0,
+                    window_height=second_floor_ceil - second_floor_floor,
+                    floor_tex=dst_corridor.floor_tex,
+                    ceil_tex=dst_corridor.ceil_tex,
+                    wall_tex=dst_corridor.wall_tex,
+                ))
+
+            landing_y = hall_y + hall_h + wall_thickness
+            if side_dir > 0:
+                landing_x = hall_x + hall_w + wall_thickness
+            else:
+                landing_x = hall_x - wall_thickness - stair_w
+            landing_h = step_depth
+            landing = self.level.add_room(Room(
+                landing_x,
+                landing_y,
+                stair_w,
+                landing_h,
+                floor_tex=dst_corridor.floor_tex,
+                wall_tex=dst_corridor.wall_tex,
+                ceil_tex=dst_corridor.ceil_tex,
+                floor_height=second_floor_floor,
+                ceil_height=second_floor_ceil,
+            ))
+
+            if last_step_room is not None:
+                self.level.add_connector(Window(
+                    landing_x,
+                    hall_y + hall_h,
+                    stair_w,
+                    wall_thickness,
+                    last_step_room,
+                    landing,
+                    sill_height=0,
+                    window_height=second_floor_ceil - second_floor_floor,
+                    floor_tex=dst_corridor.floor_tex,
+                    ceil_tex=dst_corridor.ceil_tex,
+                    wall_tex=dst_corridor.wall_tex,
+                ))
+
+            portal_y = landing_y + landing_h
+            threshold_y = portal_y + wall_thickness
+            threshold = self.level.add_room(Room(
+                landing_x,
+                threshold_y,
+                stair_w,
+                step_depth,
+                floor_tex=dst_corridor.floor_tex,
+                wall_tex=dst_corridor.wall_tex,
+                ceil_tex=dst_corridor.ceil_tex,
+                floor_height=second_floor_floor,
+                ceil_height=second_floor_ceil,
+            ))
+
+            src_line_id, dst_line_id = portal_pair_ids
+            # Reverse portal (off-map back down to main).
+            self.level.add_connector(Portal(
+                landing_x,
+                portal_y,
+                stair_w,
+                wall_thickness,
+                landing,
+                threshold,
+                source_line_id=dst_line_id,
+                target_line_id=src_line_id,
+                type=1,
+                planeanchor=1,
+                floor_tex=dst_corridor.floor_tex,
+                ceil_tex=dst_corridor.ceil_tex,
+                wall_tex=dst_corridor.wall_tex,
+            ))
+
+        # Right wing portal ids (unique, large values to avoid clashing with sector tags)
+        portal_ids = (40001, 40002)
+
+        # Main floor stairwell (spawn here)
+        add_stairwell_to_corridor(
+            right_corridor,
+            side_dir=1,
+            set_spawn=True,
+            portal_target_corridor=right_corridor_2,
+            portal_pair_ids=portal_ids,
+        )
+
+        # Off-map portal entry corresponding to the stairwell top.
+        add_second_floor_portal_entry(
+            right_corridor_2,
+            side_dir=1,
+            portal_pair_ids=portal_ids,
+        )
+
+        # Left wing stairwell remains for aesthetics/extra access but no portal.
         add_stairwell_to_corridor(left_corridor, side_dir=-1, set_spawn=False)
         
         return self.level

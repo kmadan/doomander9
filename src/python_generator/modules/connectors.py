@@ -237,3 +237,134 @@ class Window(Connector):
                 
             if is_window_face:
                 pass
+
+
+class Portal(Connector):
+    def __init__(
+        self,
+        x,
+        y,
+        width,
+        height,
+        room1,
+        room2,
+        *,
+        source_line_id: int,
+        target_line_id: int,
+        type: int = 1,
+        planeanchor: int = 1,
+        floor_tex="FLOOR4_8",
+        ceil_tex="CEIL3_5",
+        wall_tex="STARTAN3",
+    ):
+        super().__init__(x, y, width, height, room1, room2)
+        self.source_line_id = int(source_line_id)
+        self.target_line_id = int(target_line_id)
+        self.type = int(type)
+        self.planeanchor = int(planeanchor)
+        self.floor_tex = floor_tex
+        self.ceil_tex = ceil_tex
+        self.wall_tex = wall_tex
+
+    def build(self, builder):
+        # Create a simple passable connector sector between room1 and room2.
+        portal_sector_index = len(builder.editor.sectors)
+
+        points = [
+            (self.x, self.y),
+            (self.x + self.width, self.y),
+            (self.x + self.width, self.y + self.height),
+            (self.x, self.y + self.height),
+        ]
+
+        base_floor = 0
+        if getattr(self.room1, 'floor_height', None) is not None:
+            base_floor = self.room1.floor_height
+        elif getattr(self.room2, 'floor_height', None) is not None:
+            base_floor = self.room2.floor_height
+
+        ceil_h = base_floor + 128
+        c1 = getattr(self.room1, 'ceil_height', None)
+        c2 = getattr(self.room2, 'ceil_height', None)
+        if c1 is not None or c2 is not None:
+            ceil_h = max(int(c1 or 0), int(c2 or 0))
+
+        builder.draw_polygon(
+            points,
+            floor_tex=self.floor_tex,
+            ceil_tex=self.ceil_tex,
+            wall_tex=self.wall_tex,
+            floor_height=int(base_floor),
+            ceil_height=int(ceil_h),
+        )
+
+        # Tag exactly one linedef between room1 and the portal sector so it becomes
+        # a line portal source after UDMF conversion.
+        #
+        # We identify the intended shared edge geometrically.
+        # (room1 touching portal left/right/top/bottom determines which portal edge is shared.)
+        edge = None
+        if self.room1 is not None:
+            if self.x == self.room1.x + self.room1.width:
+                edge = ((self.x, self.y), (self.x, self.y + self.height))
+            elif self.x + self.width == self.room1.x:
+                edge = ((self.x + self.width, self.y), (self.x + self.width, self.y + self.height))
+            elif self.y == self.room1.y + self.room1.height:
+                edge = ((self.x, self.y), (self.x + self.width, self.y))
+            elif self.y + self.height == self.room1.y:
+                edge = ((self.x, self.y + self.height), (self.x + self.width, self.y + self.height))
+
+        def _v_xy(v):
+            vx = int(getattr(v, 'x', 0))
+            vy = int(getattr(v, 'y', 0))
+            return (vx, vy)
+
+        tagged = False
+        if edge is not None:
+            (ax, ay), (bx, by) = edge
+            axy = (int(ax), int(ay))
+            bxy = (int(bx), int(by))
+            for ld in builder.editor.linedefs:
+                if ld.back == 0xFFFF:
+                    continue
+                v1 = builder.editor.vertexes[ld.vx_a]
+                v2 = builder.editor.vertexes[ld.vx_b]
+                p1 = _v_xy(v1)
+                p2 = _v_xy(v2)
+                if not ((p1 == axy and p2 == bxy) or (p1 == bxy and p2 == axy)):
+                    continue
+
+                front_sector = builder.editor.sidedefs[ld.front].sector
+                back_sector = builder.editor.sidedefs[ld.back].sector
+                if portal_sector_index not in (front_sector, back_sector):
+                    continue
+
+                ld.tag = int(self.source_line_id)
+                builder.editor.sidedefs[ld.front].tx_mid = "-"
+                builder.editor.sidedefs[ld.back].tx_mid = "-"
+                tagged = True
+                break
+
+        if not tagged:
+            # Fallback: tag the first two-sided boundary line that touches the portal sector.
+            for ld in builder.editor.linedefs:
+                if ld.back == 0xFFFF:
+                    continue
+                front_sector = builder.editor.sidedefs[ld.front].sector
+                back_sector = builder.editor.sidedefs[ld.back].sector
+                if (front_sector == portal_sector_index and back_sector != portal_sector_index) or (back_sector == portal_sector_index and front_sector != portal_sector_index):
+                    ld.tag = int(self.source_line_id)
+                    builder.editor.sidedefs[ld.front].tx_mid = "-"
+                    builder.editor.sidedefs[ld.back].tx_mid = "-"
+                    tagged = True
+                    break
+
+        if not tagged:
+            raise RuntimeError("Failed to tag portal linedef")
+
+        builder.register_udmf_line_portal(
+            source_line_id=self.source_line_id,
+            target_line_id=self.target_line_id,
+            type=self.type,
+            planeanchor=self.planeanchor,
+        )

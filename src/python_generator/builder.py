@@ -24,6 +24,13 @@ class WadBuilder:
         #   type/flags/alpha: Sector_Set3dFloor args
         self._udmf_3dfloor_specs: list[dict] = []
 
+        # Line portal postprocess (Line_SetPortal). Each entry is a dict with:
+        #   source_line_id: line ID (UDMF) to apply portal to
+        #   target_line_id: destination line ID
+        #   type: 0 visual, 1 teleporter, 2 interactive, 3 static
+        #   planeanchor: alignment mode
+        self._udmf_line_portal_specs: list[dict] = []
+
         # Teleport destination postprocess: in classic Doom format, things don't
         # have TIDs. We record the teleport destination coordinates during build
         # and assign the UDMF thing `id` after conversion.
@@ -66,6 +73,14 @@ class WadBuilder:
             'type': int(type),
             'flags': int(flags),
             'alpha': int(alpha),
+        })
+
+    def register_udmf_line_portal(self, *, source_line_id: int, target_line_id: int, type: int = 1, planeanchor: int = 1):
+        self._udmf_line_portal_specs.append({
+            'source_line_id': int(source_line_id),
+            'target_line_id': int(target_line_id),
+            'type': int(type),
+            'planeanchor': int(planeanchor),
         })
 
     def add_3d_floor_platform(self, *, target_sector_tag: int, z: int, thickness: int = 16,
@@ -271,6 +286,27 @@ class WadBuilder:
                     break
             if not matched:
                 raise RuntimeError(f"UDMF postprocess failed: could not find control linedef id={control_line_id}")
+
+        # Apply any requested line portals.
+        # We create source portal lines in classic format with a unique linedef tag.
+        # During conversion, omg.udmf maps that tag onto `id`. We match by `id`.
+        for spec in self._udmf_line_portal_specs:
+            source_line_id = spec['source_line_id']
+            target_line_id = spec['target_line_id']
+            matched = False
+            for ld in umap.linedefs:
+                if getattr(ld, 'id', -1) == source_line_id:
+                    # 156: Line_SetPortal(targetline, thisline, type, planeanchor)
+                    ld.special = 156
+                    ld.arg0 = int(target_line_id)
+                    ld.arg1 = 0
+                    ld.arg2 = int(spec['type'])
+                    ld.arg3 = int(spec['planeanchor'])
+                    ld.arg4 = 0
+                    matched = True
+                    break
+            if not matched:
+                raise RuntimeError(f"UDMF postprocess failed: could not find portal linedef id={source_line_id}")
 
         self.wad.udmfmaps["MAP01"] = umap.to_lumps()
 

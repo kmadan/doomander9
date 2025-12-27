@@ -21,21 +21,8 @@ def main():
     print("Building Level...")
     level.build(builder)
 
-    # Real 2nd story inside the building (UDMF 3D floor), not over the lawn.
-    # Some sectors (notably door sectors) need unique tags for reliable door
-    # behavior; we still apply the 3D floor to those tags too.
-    if hasattr(level, "second_floor_tag"):
-        tags = {int(level.second_floor_tag)}
-        tags |= set(getattr(builder, "get_extra_3d_floor_target_tags", lambda: set())())
-        for t in sorted(tags):
-            builder.add_3d_floor_platform(
-                target_sector_tag=t,
-                z=140,
-                thickness=16,
-                floor_tex="FLOOR4_8",
-                ceil_tex="CEIL3_5",
-                wall_tex="STARTAN3",
-            )
+    # Second floor is now implemented as a disconnected/off-map area connected
+    # via line portals (so doors can be independent per floor).
     
     print("Adding Player Start...")
     # Spawn point is chosen by the generator (for fast iteration/testing).

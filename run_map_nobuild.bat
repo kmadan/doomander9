@@ -8,7 +8,6 @@ set "PWAD=build\py_hostel_full.wad"
 if not exist "%DOOM_EXE%" (
     echo Error: Doom executable not found at:
     echo "%DOOM_EXE%"
-    echo Please verify the path in run_map.bat
     pause
     exit /b 1
 )
@@ -16,14 +15,19 @@ if not exist "%DOOM_EXE%" (
 if not exist "%IWAD%" (
     echo Error: Doom 2 IWAD not found at:
     echo "%IWAD%"
-    echo Please verify the path in run_map.bat
     pause
     exit /b 1
 )
 
-echo Launching map...
-call .\compile_py_map.bat
-if errorlevel 1 exit /b 1
+if not exist "%PWAD%" (
+    echo Error: PWAD not found at:
+    echo "%PWAD%"
+    echo Run compile_py_map.bat first.
+    pause
+    exit /b 1
+)
+
+echo Launching map (no build)...
 start "UZDoom" "%DOOM_EXE%" -iwad "%IWAD%" -file "%PWAD%" -warp 1
 
 endlocal

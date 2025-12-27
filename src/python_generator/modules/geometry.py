@@ -1,7 +1,7 @@
 from .element import Element
 
 class Room(Element):
-    def __init__(self, x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STARTAN3", ceil_tex="CEIL3_5", floor_height=0, ceil_height=128):
+    def __init__(self, x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STARTAN3", ceil_tex="CEIL3_5", floor_height=0, ceil_height=128, tag=0):
         super().__init__(x, y)
         self.width = width
         self.height = height
@@ -10,6 +10,7 @@ class Room(Element):
         self.ceil_tex = ceil_tex
         self.floor_height = floor_height
         self.ceil_height = ceil_height
+        self.tag = tag
         self.cuts = {
             'top': [],
             'bottom': [],
@@ -73,7 +74,8 @@ class Room(Element):
                              ceil_tex=self.ceil_tex, 
                              wall_tex=self.wall_tex,
                              floor_height=self.floor_height,
-                             ceil_height=self.ceil_height)
+                             ceil_height=self.ceil_height,
+                             tag=self.tag)
 
 class Corridor(Room):
     def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5"):

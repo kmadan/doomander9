@@ -1,5 +1,9 @@
 from .element import Element
 
+# `omg` is made importable by `src/python_generator/builder.py`, which adds the
+# local omgifol checkout to sys.path early in the generator entrypoints.
+from omg.mapedit import Thing
+
 class Furniture(Element):
     def __init__(self, x, y, thing_type, angle=0):
         super().__init__(x, y)
@@ -8,8 +12,7 @@ class Furniture(Element):
 
     def build(self, builder):
         # Add a Thing to the map
-        # We need to access the builder's editor
-        thing = builder.editor.Thing()
+        thing = Thing()
         thing.x = int(self.x)
         thing.y = int(self.y)
         thing.angle = int(self.angle)
@@ -46,3 +49,9 @@ class Plant(Furniture):
         # 54 = Big Tree
         # Let's use 2028 (Column)
         super().__init__(x, y, 2028)
+
+
+class TeleportDestination(Furniture):
+    def __init__(self, x, y, angle=0):
+        # Doom thing 14 = Teleport Landing
+        super().__init__(x, y, 14, angle)

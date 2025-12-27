@@ -46,9 +46,15 @@ class Door(Connector):
             
     def build(self, builder):
         # Draw door sector (Closed: Ceiling = Floor)
-        ceil_h = 0
+        base_floor = 0
+        if getattr(self.room1, 'floor_height', None) is not None:
+            base_floor = self.room1.floor_height
+        elif getattr(self.room2, 'floor_height', None) is not None:
+            base_floor = self.room2.floor_height
+
+        ceil_h = base_floor
         if self.state == 'open':
-            ceil_h = 128
+            ceil_h = base_floor + 128
         
         # Capture the sector index before drawing (it will be the next one appended)
         door_sector_index = len(builder.editor.sectors)
@@ -64,7 +70,7 @@ class Door(Connector):
                              floor_tex="FLOOR4_8", 
                              ceil_tex="FLAT20", # Door ceiling
                              wall_tex="DOORTRAK", # Side walls
-                             floor_height=0, 
+                             floor_height=base_floor, 
                              ceil_height=ceil_h,
                              tag=self.tag) # Closed or Open
                              
@@ -96,6 +102,8 @@ class Door(Connector):
                 # Set Action (optional)
                 if self.linedef_action is not None and self.linedef_action != 0:
                     ld.action = self.linedef_action
+                if self.tag:
+                    ld.tag = self.tag
                 # Set Unpegged
                 ld.upper_unpeg = True
                 pass
@@ -139,10 +147,13 @@ class Switch(Element):
                 builder.editor.sidedefs[ld.front].tx_mid = "SW1STRTN"
 
 class Window(Connector):
-    def __init__(self, x, y, width, height, room1, room2, sill_height=32, window_height=64):
+    def __init__(self, x, y, width, height, room1, room2, sill_height=32, window_height=64, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3"):
         super().__init__(x, y, width, height, room1, room2)
         self.sill_height = sill_height
         self.window_height = window_height
+        self.floor_tex = floor_tex
+        self.ceil_tex = ceil_tex
+        self.wall_tex = wall_tex
         
     def build(self, builder):
         # Draw window sector
@@ -158,12 +169,18 @@ class Window(Connector):
             (self.x, self.y + self.height)
         ]
         
+        base_floor = 0
+        if getattr(self.room1, 'floor_height', None) is not None:
+            base_floor = self.room1.floor_height
+        elif getattr(self.room2, 'floor_height', None) is not None:
+            base_floor = self.room2.floor_height
+
         builder.draw_polygon(points, 
-                             floor_tex="FLOOR4_8", 
-                             ceil_tex="CEIL3_5", 
-                             wall_tex="STARTAN3", # Side walls (jambs)
-                             floor_height=self.sill_height, 
-                             ceil_height=self.sill_height + self.window_height)
+                             floor_tex=self.floor_tex, 
+                             ceil_tex=self.ceil_tex, 
+                             wall_tex=self.wall_tex, # Side walls (jambs)
+                             floor_height=base_floor + self.sill_height, 
+                             ceil_height=base_floor + self.sill_height + self.window_height)
                              
         # Iterate ALL linedefs to find those belonging to this window
         for ld in builder.editor.linedefs:

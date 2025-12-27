@@ -9,12 +9,88 @@ if omgifol_path not in sys.path:
 
 from omg import *
 from omg.mapedit import MapEditor, Vertex, Linedef, Sidedef, Sector, Thing
+from omg.udmf import UMapEditor
 
 class WadBuilder:
     def __init__(self):
         self.wad = WAD()
         # Create a new map (MAP01)
         self.editor = MapEditor()
+
+        # Post-processing steps applied after converting the classic Doom-format map
+        # to UDMF (TEXTMAP). Each entry is a dict with:
+        #   control_line_id: unique line id to locate after conversion
+        #   target_sector_tag: sector tag to receive the 3D floor
+        #   type/flags/alpha: Sector_Set3dFloor args
+        self._udmf_3dfloor_specs: list[dict] = []
+
+        # Unique ids for UDMF postprocess control linedefs.
+        self._next_control_line_id: int = 10000
+
+    def register_udmf_3d_floor(self, *, control_line_id: int, target_sector_tag: int, type: int = 1, flags: int = 0, alpha: int = 255):
+        self._udmf_3dfloor_specs.append({
+            'control_line_id': int(control_line_id),
+            'target_sector_tag': int(target_sector_tag),
+            'type': int(type),
+            'flags': int(flags),
+            'alpha': int(alpha),
+        })
+
+    def add_3d_floor_platform(self, *, target_sector_tag: int, z: int, thickness: int = 16,
+                              floor_tex: str = "FLOOR4_8", ceil_tex: str = "CEIL3_5", wall_tex: str = "STARTAN3",
+                              alpha: int = 255, flags: int = 0):
+        """Create a simple solid 3D-floor platform (ZDoom UDMF) inside target sectors.
+
+        This draws an off-map control sector and marks one control linedef with a
+        unique id. During `save()`, that linedef is converted to Sector_Set3dFloor
+        to apply the 3D floor to all sectors tagged with `target_sector_tag`.
+        """
+        control_line_id = self._next_control_line_id
+        self._next_control_line_id += 1
+
+        # Off-map control sector location.
+        cx = 20000 + (control_line_id - 10000) * 128
+        cy = 20000
+        w = 64
+        h = 64
+
+        sector_index = len(self.editor.sectors)
+        self.draw_rectangle(
+            cx,
+            cy,
+            w,
+            h,
+            floor_tex=floor_tex,
+            ceil_tex=ceil_tex,
+            wall_tex=wall_tex,
+            floor_height=int(z),
+            ceil_height=int(z + thickness),
+            light=160,
+        )
+
+        # Tag exactly one linedef of the control sector so we can find it after UDMF conversion.
+        tagged = False
+        for ld in self.editor.linedefs:
+            if tagged:
+                break
+            if ld.back == 0xFFFF:
+                front_sector = self.editor.sidedefs[ld.front].sector
+                if front_sector == sector_index:
+                    ld.tag = int(control_line_id)
+                    tagged = True
+
+        if not tagged:
+            raise RuntimeError("Failed to tag 3D-floor control linedef")
+
+        self.register_udmf_3d_floor(
+            control_line_id=control_line_id,
+            target_sector_tag=int(target_sector_tag),
+            type=1,
+            flags=int(flags),
+            alpha=int(alpha),
+        )
+
+        return control_line_id
         
     def draw_rectangle(self, x, y, width, height, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3", floor_height=0, ceil_height=128, light=160):
         """
@@ -69,5 +145,84 @@ class WadBuilder:
         self.editor.things.append(thing)
 
     def save(self, filename):
-        self.wad.maps["MAP01"] = self.editor.to_lumps()
+        # Build classic map lumps first (we rely on MapEditor.draw_sector convenience)
+        classic_lumps = self.editor.to_lumps()
+
+        # Convert to UDMF so we can use Hexen-style specials w/ args (e.g. Sector_Set3dFloor)
+        umap = UMapEditor(classic_lumps, namespace="ZDoom")
+
+        # Translate legacy Doom-format line types used by this generator into
+        # UDMF/ZDoom action specials.
+        #
+        # Important: when we convert a Doom-format map to UDMF, the original linedef
+        # `action` field becomes `special` verbatim. That is *not* what we want,
+        # because Doom-format line type numbers do not match ZDoom action-special
+        # numbers. We rewrite the few types we rely on.
+        for ld in umap.linedefs:
+            # 1 in Doom format = DR Door (open-wait-close)
+            if getattr(ld, 'special', 0) == 1:
+                # Map to Door_Raise(tag, speed, delay, lighttag)
+                ld.special = 12
+                ld.arg0 = 0      # tag=0 => use sector on back side
+                ld.arg1 = 16     # speed
+                ld.arg2 = 150    # delay
+                ld.arg3 = 0      # lighttag
+                ld.arg4 = 0
+                # Trigger flags (ZDoom/Hexen-style in UDMF)
+                ld.playeruse = True
+                ld.repeatspecial = True
+                ld.monsteractivate = True
+
+            # 42 in Doom format = SR Door Close
+            elif getattr(ld, 'special', 0) == 42:
+                # The converter preserves the original linedef tag in ld.arg0.
+                # Map to Door_Close(tag, speed, lighttag)
+                door_tag = getattr(ld, 'arg0', 0)
+                ld.special = 10
+                ld.arg0 = door_tag
+                ld.arg1 = 16
+                ld.arg2 = 0
+                ld.arg3 = 0
+                ld.arg4 = 0
+                ld.playeruse = True
+                ld.repeatspecial = True
+
+            # 97 in Doom format = WR Teleport
+            elif getattr(ld, 'special', 0) == 97:
+                # Converter stores the original Doom tag in ld.arg0.
+                dest_tag = getattr(ld, 'arg0', 0)
+                # Map to Teleport(tid, tag, nosourcefog)
+                ld.special = 70
+                ld.arg0 = 0
+                ld.arg1 = dest_tag
+                ld.arg2 = 0
+                ld.arg3 = 0
+                ld.arg4 = 0
+                ld.playercross = True
+                ld.repeatspecial = True
+                ld.monsteractivate = True
+
+        # Apply any requested 3D-floor control linedefs.
+        # Our control lines are created in classic format with a unique linedef tag.
+        # During conversion, omg.udmf maps that tag onto both `id` and `arg0`.
+        # We match by `id`.
+        for spec in self._udmf_3dfloor_specs:
+            control_line_id = spec['control_line_id']
+            target_sector_tag = spec['target_sector_tag']
+            matched = False
+            for ld in umap.linedefs:
+                if getattr(ld, 'id', -1) == control_line_id:
+                    ld.special = 160  # Sector_Set3dFloor
+                    ld.arg0 = target_sector_tag
+                    ld.arg1 = spec['type']
+                    ld.arg2 = spec['flags']
+                    ld.arg3 = spec['alpha']
+                    ld.arg4 = 0
+                    matched = True
+                    break
+            if not matched:
+                raise RuntimeError(f"UDMF postprocess failed: could not find control linedef id={control_line_id}")
+
+        self.wad.udmfmaps["MAP01"] = umap.to_lumps()
+
         self.wad.to_file(filename)

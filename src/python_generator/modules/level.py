@@ -3,6 +3,9 @@ class Level:
         self.rooms = []
         self.connectors = []
         self.next_tag = 1
+
+        # (x, y, text) tuples used by WadBuilder.add_label_spot during build.
+            # Removed label spot support
         
     def get_new_tag(self):
         tag = self.next_tag
@@ -29,3 +32,5 @@ class Level:
         # Build connectors
         for conn in self.connectors:
             conn.build(builder)
+
+            # Removed label spot processing

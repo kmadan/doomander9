@@ -36,20 +36,30 @@ class HostelGenerator:
         # (Wing corridor width is 128.)
         middle_wing_x = self.start_x - 128 - wall_thickness
         middle_wing = Wing(middle_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
-        middle_corridor = middle_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
 
         # 2b. Add the West Wing, with a brown outdoor ground strip between it and the Middle Wing.
         # The strip is just an outdoor sector (sky ceiling) with a brown ground flat.
+        # Leave a wall-thickness gap so Middle Wing room windows can open onto it.
         brown_width = 512
-        brown_ground_x = middle_wing_x - middle_wing.room_width - wall_thickness - brown_width
+        brown_ground_x = middle_wing_x - middle_wing.room_width - wall_thickness - brown_width - wall_thickness
         brown_ground = self.level.add_room(Lawn(brown_ground_x, self.start_y, brown_width, lawn_height, floor_tex="RROCK19"))
+
+        # Generate the Middle Wing now that the brown strip exists, so room windows can look onto it.
+        middle_corridor = middle_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0, exterior_area=brown_ground)
 
         # Place the West Wing corridor facing the brown strip.
         # For a left-side wing with corridor_on_lawn_side=True, windows use x = corridor_x + 128
         # with width=wall_thickness, so brown_ground_x must equal corridor_x + 128 + wall_thickness.
         west_wing_x = brown_ground_x - (128 + wall_thickness)
         west_wing = Wing(west_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
-        west_corridor = west_wing.generate(self.level, brown_ground, floor_height=0, ceil_height=128, story_tag=0)
+
+        # Vacant, inaccessible outdoor area west of the West Wing.
+        # This gives the West Wing room windows something to look out onto.
+        west_outside_width = 768
+        west_outside_x = west_wing_x - west_wing.room_width - wall_thickness - west_outside_width - wall_thickness
+        west_outside = self.level.add_room(Lawn(west_outside_x, self.start_y, west_outside_width, lawn_height, floor_tex="PYGRASS"))
+
+        west_corridor = west_wing.generate(self.level, brown_ground, floor_height=0, ceil_height=128, story_tag=0, exterior_area=west_outside)
         
         # 3. Generate East Wing (East of the lawn)
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)

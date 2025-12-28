@@ -20,7 +20,7 @@ class Wing:
         # "7 rooms on either side of the central large shared bathroom"
         # Sequence: 7 Rooms, Bathroom, 7 Rooms.
         
-    def generate(self, level, lawn, floor_height=0, ceil_height=128, story_tag: int = 0):
+    def generate(self, level, lawn, floor_height=0, ceil_height=128, story_tag: int = 0, exterior_area=None):
         # If we are creating a 3D-floor second story inside these sectors, the
         # ceiling must be higher than the 2nd-floor height.
         if story_tag:
@@ -75,7 +75,7 @@ class Wing:
         
         # First block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
             current_y += self.room_height + self.wall_thickness
             
         # Bathroom (Central)
@@ -100,7 +100,7 @@ class Wing:
         
         # Second block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
             current_y += self.room_height + self.wall_thickness
             
         # 3. Corridor Windows to Lawn
@@ -132,7 +132,7 @@ class Wing:
             
         return corridor
 
-    def _create_room(self, level, x, y, corridor, door_side, lawn=None, floor_height=0, ceil_height=128, story_tag: int = 0):
+    def _create_room(self, level, x, y, corridor, door_side, lawn=None, exterior_area=None, floor_height=0, ceil_height=128, story_tag: int = 0):
         room = level.add_room(Bedroom(x, y, self.room_width, self.room_height))
         room.floor_height = floor_height
         room.ceil_height = ceil_height
@@ -190,6 +190,41 @@ class Wing:
                     window_segment,
                     room,
                     lawn,
+                    sill_height=48,
+                    window_height=window_height,
+                    floor_tex=room.floor_tex,
+                    ceil_tex=room.ceil_tex,
+                ))
+            return
+
+        # If this wing's rooms face an exterior strip/yard, connect windows directly to it.
+        # This avoids the "tiny window box" look and makes the view feel continuous.
+        if (self.corridor_on_lawn_side) and (exterior_area is not None):
+            if door_side == 'right':
+                # Window on Left (outside)
+                win_x = x - self.wall_thickness
+                level.add_connector(Window(
+                    win_x,
+                    y + window_offset_y,
+                    self.wall_thickness,
+                    window_segment,
+                    exterior_area,
+                    room,
+                    sill_height=48,
+                    window_height=window_height,
+                    floor_tex=room.floor_tex,
+                    ceil_tex=room.ceil_tex,
+                ))
+            else:
+                # Window on Right (outside)
+                win_x = x + self.room_width
+                level.add_connector(Window(
+                    win_x,
+                    y + window_offset_y,
+                    self.wall_thickness,
+                    window_segment,
+                    room,
+                    exterior_area,
                     sill_height=48,
                     window_height=window_height,
                     floor_tex=room.floor_tex,

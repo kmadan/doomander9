@@ -26,11 +26,11 @@ class HostelGenerator:
         lawn = self.level.add_room(Lawn(self.start_x, self.start_y, lawn_width, lawn_height, floor_tex="PYGRASS"))
 
         # 2. Generate Left Wing (West)
-        # Place the corridor on the OUTSIDE edge so the stairs can attach to a clean wall
-        # (avoids overlaps with room doors/windows).
-        # Wing rooms are 256 wide; keep a wall_thickness gap between rooms and the lawn.
-        left_wing_x = self.start_x - 256 - wall_thickness
-        left_wing = Wing(left_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=False)
+        # Corridor must face the lawn; rooms are on the outside.
+        # Place corridor so its lawn-facing edge aligns to the lawn via a wall-thickness window gap.
+        # (Wing corridor width is 128.)
+        left_wing_x = self.start_x - 128 - wall_thickness
+        left_wing = Wing(left_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
         left_corridor = left_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
         
         # 3. Generate Right Wing (East)

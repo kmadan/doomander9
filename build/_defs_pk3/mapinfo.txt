@@ -1,0 +1,3 @@
+// Root MAPINFO lump for PK3.
+// MAPINFO uses `include` (not `#include`).
+include mapinfo/mapinfo.txt

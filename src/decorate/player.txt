@@ -1,0 +1,5 @@
+actor HostelStudent : DoomPlayer
+{
+  Player.ViewHeight 50
+  Height 60
+}

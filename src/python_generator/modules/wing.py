@@ -31,6 +31,7 @@ class Wing:
         add_corridor_windows: bool = True,
         corridor_window_skip_ranges=None,
         corridor_window_targets=None,
+        door_state='closed',
     ):
         # If we are creating a 3D-floor second story inside these sectors, the
         # ceiling must be higher than the 2nd-floor height.
@@ -86,7 +87,7 @@ class Wing:
         
         # First block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag, door_state=door_state)
             current_y += self.room_height + self.wall_thickness
             
         # Bathroom (Central)
@@ -102,16 +103,16 @@ class Wing:
         door_y = current_y + (bath_height // 2) - 32
         if door_side == 'right':
             door_x = rooms_x + self.room_width
-            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, bathroom, corridor))
+            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, bathroom, corridor, state=door_state))
         else:
             door_x = rooms_x - self.wall_thickness
-            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, bathroom, corridor))
+            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, bathroom, corridor, state=door_state))
             
         current_y += bath_height + self.wall_thickness
         
         # Second block of rooms
         for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag)
+            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag, door_state=door_state)
             current_y += self.room_height + self.wall_thickness
             
         # 3. Corridor Windows to Lawn
@@ -173,7 +174,7 @@ class Wing:
             
         return corridor
 
-    def _create_room(self, level, x, y, corridor, door_side, lawn=None, exterior_area=None, floor_height=0, ceil_height=128, story_tag: int = 0):
+    def _create_room(self, level, x, y, corridor, door_side, lawn=None, exterior_area=None, floor_height=0, ceil_height=128, story_tag: int = 0, door_state='closed'):
         room = level.add_room(Bedroom(x, y, self.room_width, self.room_height))
         room.floor_height = floor_height
         room.ceil_height = ceil_height
@@ -186,10 +187,10 @@ class Wing:
         
         if door_side == 'right':
             door_x = x + self.room_width
-            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, room, corridor))
+            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, room, corridor, state=door_state))
         else:
             door_x = x - self.wall_thickness
-            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, room, corridor))
+            level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, room, corridor, state=door_state))
             
         # Create Exterior Window
         # We need a sector to connect to.

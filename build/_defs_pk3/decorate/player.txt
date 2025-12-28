@@ -2,4 +2,8 @@ actor HostelStudent : DoomPlayer
 {
   Player.ViewHeight 50
   Height 60
+  Player.StartItem "Pistol"
+  Player.StartItem "Fist"
+  Player.StartItem "Clip", 50
+  Player.StartItem "LightAmplificationVisor"
 }

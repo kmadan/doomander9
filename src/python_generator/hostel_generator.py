@@ -293,8 +293,9 @@ class HostelGenerator:
         self.level.add_connector(Door(gate1_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate1_tag, linedef_action=0))
         
         # Switch for Gate 1
+        # Move switch OUTSIDE the lawn to avoid overlapping sectors
         switch1_x = gate1_x - 32
-        switch1_y = self.start_y + 64
+        switch1_y = self.start_y - wall_thickness - 32 # Outside
         self.level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag))
         
         # Gate 2 (Right)
@@ -303,8 +304,9 @@ class HostelGenerator:
         self.level.add_connector(Door(gate2_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate2_tag, linedef_action=0))
         
         # Switch for Gate 2
+        # Move switch OUTSIDE the lawn to avoid overlapping sectors
         switch2_x = gate2_x + gate_width + 16
-        switch2_y = self.start_y + 64
+        switch2_y = self.start_y - wall_thickness - 32 # Outside
         self.level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag))
 
         # 7. Stairs + off-map 2nd floor connected via line portals
@@ -359,6 +361,7 @@ class HostelGenerator:
             add_corridor_windows=True,
             corridor_window_skip_ranges=[(west_stair_reserved_y0_2, west_stair_reserved_y1_2)],
             corridor_window_targets=corridor_window_targets_west_2,
+            door_state='open',
         )
 
         middle_wing_2 = Wing(middle_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
@@ -419,9 +422,10 @@ class HostelGenerator:
             add_corridor_windows=True,
             corridor_window_skip_ranges=[(middle_stair_reserved_y0_2, middle_stair_reserved_y1_2)],
             corridor_window_targets=corridor_window_targets_2,
+            door_state='open',
         )
         east_wing_2 = Wing(east_rooms_x, self.start_y + second_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        east_corridor_2 = east_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
+        east_corridor_2 = east_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0, door_state='open')
 
         def add_stairwell_to_corridor(src_corridor, side_dir: int, *, attach_y: int, set_spawn: bool, portal_target_corridor=None, portal_pair_ids=None):
             hall_h = steps * step_depth
@@ -782,19 +786,20 @@ class HostelGenerator:
         )
 
         # Middle Wing: add the same stairs + portal connection to its off-map 2nd floor.
+        # DEBUG: Disable Middle Wing Portal to test blackout.
         add_stairwell_to_corridor(
             middle_corridor,
             side_dir=1,
             attach_y=middle_attach_y,
             set_spawn=False,
             portal_target_corridor=middle_corridor_2,
-            portal_pair_ids=middle_portal_ids,
+            portal_pair_ids=None, # middle_portal_ids,
         )
         add_second_floor_portal_entry(
             middle_corridor_2,
             side_dir=1,
             attach_y=middle_attach_y_2,
-            portal_pair_ids=middle_portal_ids,
+            portal_pair_ids=middle_portal_ids, # Keep this to generate the room, but portal won't link?
         )
         
         return self.level

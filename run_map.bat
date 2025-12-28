@@ -8,6 +8,10 @@ set "IWAD=C:\Games\Windows-UZDoom-4.14.3\DOOM2.WAD"
 set "PWAD=%SCRIPT_DIR%build\py_hostel_full.wad"
 set "DEFS_PK3=%SCRIPT_DIR%build\hostel_defs.pk3"
 
+REM Workaround: some systems show black/dark flashes with the Vulkan backend.
+REM Force OpenGL. (If unsupported, it is ignored and the engine still launches.)
+set "VIDEO_ARGS=+vid_preferbackend 0"
+
 if not exist "%DOOM_EXE%" (
     echo Error: Doom executable not found at:
     echo "%DOOM_EXE%"
@@ -35,6 +39,6 @@ if not exist "%DEFS_PK3%" (
     exit /b 1
 )
 
-start "UZDoom" "%DOOM_EXE%" -iwad "%IWAD%" -file "%PWAD%" "%DEFS_PK3%" -warp 1
+start "UZDoom" "%DOOM_EXE%" -iwad "%IWAD%" -file "%PWAD%" "%DEFS_PK3%" -warp 1 %VIDEO_ARGS%
 
 endlocal

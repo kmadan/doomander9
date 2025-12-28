@@ -368,3 +368,42 @@ class Portal(Connector):
             type=self.type,
             planeanchor=self.planeanchor,
         )
+
+class Switch(Connector):
+    def __init__(self, x, y, action=0, tag=0):
+        # Switches are small 16x16 pillars
+        width = 16
+        height = 16
+        super().__init__(x, y, width, height, None, None)
+        self.action = action
+        self.tag = tag
+
+    def build(self, builder):
+        # Draw switch sector
+        points = [
+            (self.x, self.y),
+            (self.x + self.width, self.y),
+            (self.x + self.width, self.y + self.height),
+            (self.x, self.y + self.height)
+        ]
+        
+        # Switches are usually raised or have a specific texture
+        builder.draw_polygon(points, 
+                             floor_tex="FLOOR4_8", 
+                             ceil_tex="CEIL3_5", 
+                             wall_tex="SW1BRCOM", # Switch texture
+                             floor_height=0, 
+                             ceil_height=128)
+                             
+        # Apply action to one of the linedefs
+        # Find the linedefs for this sector
+        switch_sector_index = len(builder.editor.sectors) - 1
+        
+        for ld in builder.editor.linedefs:
+            if ld.front != 0xFFFF:
+                if builder.editor.sidedefs[ld.front].sector == switch_sector_index:
+                    ld.special = self.action
+                    ld.arg0 = self.tag
+                    # Make it repeatable?
+                    # ld.flags |= ...
+                    break

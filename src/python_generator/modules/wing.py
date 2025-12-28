@@ -20,7 +20,18 @@ class Wing:
         # "7 rooms on either side of the central large shared bathroom"
         # Sequence: 7 Rooms, Bathroom, 7 Rooms.
         
-    def generate(self, level, lawn, floor_height=0, ceil_height=128, story_tag: int = 0, exterior_area=None):
+    def generate(
+        self,
+        level,
+        lawn,
+        floor_height=0,
+        ceil_height=128,
+        story_tag: int = 0,
+        exterior_area=None,
+        add_corridor_windows: bool = True,
+        corridor_window_skip_ranges=None,
+        corridor_window_targets=None,
+    ):
         # If we are creating a 3D-floor second story inside these sectors, the
         # ceiling must be higher than the 2nd-floor height.
         if story_tag:
@@ -104,25 +115,55 @@ class Wing:
             current_y += self.room_height + self.wall_thickness
             
         # 3. Corridor Windows to Lawn
-        # Place windows along the lawn-facing side of the corridor
-        # We can place one large window or multiple segments.
-        # Let's place a window segment for every room unit to keep it structured.
+        # Place windows along the lawn-facing side of the corridor.
+        # Optionally disabled by the caller (e.g., when that outside space is used by a stairwell bump-out).
         
         win_y = self.y + self.wall_thickness
         segment_height = self.room_height + self.wall_thickness
         
-        if self.corridor_on_lawn_side:
+        skip_ranges = corridor_window_skip_ranges or []
+        targets = corridor_window_targets or []
+
+        def _overlaps_skip(y0: int, y1: int) -> bool:
+            for a, b in skip_ranges:
+                ay0 = int(a)
+                ay1 = int(b)
+                if y0 < ay1 and y1 > ay0:
+                    return True
+            return False
+
+        def _resolve_target_room(y0: int, y1: int):
+            # If provided, targets are (y0, y1, room) tuples in world coordinates.
+            for ty0, ty1, room in targets:
+                ay0 = int(ty0)
+                ay1 = int(ty1)
+                if y0 >= ay0 and y1 <= ay1:
+                    return room
+            return lawn
+
+        if add_corridor_windows and self.corridor_on_lawn_side:
             for i in range(total_units):
+                wy0 = int(win_y + 32)
+                wy1 = int(win_y + 32 + 192)
+                if _overlaps_skip(wy0, wy1):
+                    win_y += segment_height
+                    continue
+
+                target_room = _resolve_target_room(wy0, wy1)
+                if target_room is None:
+                    win_y += segment_height
+                    continue
+
                 wx = lawn_interface_x
                 if self.side == 'right':
                     wx -= self.wall_thickness
                 level.add_connector(Window(
                     wx,
-                    win_y + 32,
+                    wy0,
                     self.wall_thickness,
                     192,
                     corridor,
-                    lawn,
+                    target_room,
                     sill_height=32,
                     window_height=96,
                     floor_tex=corridor.floor_tex,

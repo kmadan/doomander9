@@ -1,5 +1,6 @@
 import sys
 import os
+import random
 
 # Add omgifol to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -192,6 +193,10 @@ class WadBuilder:
         self.editor.things.append(thing)
 
     def save(self, filename):
+        # Ensure our outdoor lawn flat exists even if the user's IWAD doesn't ship with it.
+        # This prevents missing-flat fallbacks and makes the lawn deterministic.
+        self._ensure_procedural_flat(name="PYGRASS", seed=0x6C61776E)  # "lawn"
+
         # Build classic map lumps first (we rely on MapEditor.draw_sector convenience)
         classic_lumps = self.editor.to_lumps()
 
@@ -308,6 +313,71 @@ class WadBuilder:
             if not matched:
                 raise RuntimeError(f"UDMF postprocess failed: could not find portal linedef id={source_line_id}")
 
+        # Sanity fix: outdoor sectors should never have a sky flat on the FLOOR.
+        # If an outdoor sector ends up with texturefloor == F_SKY1, force it to GRASS1.
+        # (This prevents the "inverted" look where the ground renders as sky.)
+        for sec in umap.sectors:
+            if getattr(sec, 'textureceiling', None) == 'F_SKY1' and getattr(sec, 'texturefloor', None) == 'F_SKY1':
+                sec.texturefloor = 'PYGRASS'
+
         self.wad.udmfmaps["MAP01"] = umap.to_lumps()
 
         self.wad.to_file(filename)
+
+    def _ensure_procedural_flat(self, *, name: str, seed: int = 0):
+        """Add a simple generated 64x64 flat if it doesn't already exist in the WAD.
+
+        Uses the active WAD palette to pick green-biased indices for a grass-like look.
+        """
+        name = str(name).upper()
+        if name in self.wad.flats:
+            return
+
+        # Pick palette indices that are *green-dominant*.
+        # Doom palettes often contain bright yellows that are "high green" but do not read as grass.
+        palette = getattr(self.wad, 'palette', None)
+        colors = getattr(palette, 'colors', None)
+        tran_index = getattr(palette, 'tran_index', 247)
+        if not colors or len(colors) != 256:
+            # Fallback: choose a conservative set that tends to land in the green ramps.
+            candidates = [112, 113, 114, 115, 116, 117, 118, 119]
+        else:
+            scored: list[tuple[float, int]] = []
+            for i, (r, g, b) in enumerate(colors):
+                if i == tran_index:
+                    continue
+                # Require green dominance to avoid yellow/brown candidates.
+                # (Yellow has g≈r, grass has g >> r and g >> b.)
+                if (g - r) < 32 or (g - b) < 48:
+                    continue
+                # Favor "green over others" with a mild penalty for red.
+                score = float(g) * 2.0 - float(r) * 1.5 - float(b)
+                scored.append((score, i))
+
+            scored.sort(reverse=True)
+            candidates = [i for _score, i in scored[:24]]
+
+            # If the dominance filter was too strict for some palette, fall back to the old heuristic.
+            if not candidates:
+                scored = []
+                for i, (r, g, b) in enumerate(colors):
+                    if i == tran_index:
+                        continue
+                    score = float(g) - (float(r) + float(b)) * 0.5
+                    scored.append((score, i))
+                scored.sort(reverse=True)
+                candidates = [i for _score, i in scored[:24]] or [112, 113, 114, 115]
+
+        rng = random.Random(int(seed) & 0xFFFFFFFF)
+        data = bytearray(64 * 64)
+
+        # Simple coarse noise with some "blotches".
+        for y in range(64):
+            for x in range(64):
+                cell = (x // 8) + (y // 8) * 8
+                base = candidates[cell % len(candidates)]
+                jitter = candidates[rng.randrange(len(candidates))]
+                # Mostly base, sometimes jitter for texture variation.
+                data[y * 64 + x] = jitter if rng.random() < 0.25 else base
+
+        self.wad.flats[name] = Flat(bytes(data))

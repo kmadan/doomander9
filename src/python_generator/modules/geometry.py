@@ -82,5 +82,5 @@ class Corridor(Room):
         super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex)
 
 class Lawn(Room):
-    def __init__(self, x, y, width, height, floor_tex="RROCK19", wall_tex="BRICK7"):
+    def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7"):
         super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256)

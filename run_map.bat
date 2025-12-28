@@ -1,9 +1,11 @@
 @echo off
 setlocal
 
+set "SCRIPT_DIR=%~dp0"
+
 set "DOOM_EXE=C:\Games\Windows-UZDoom-4.14.3\uzdoom.exe"
 set "IWAD=C:\Games\Windows-UZDoom-4.14.3\DOOM2.WAD"
-set "PWAD=build\py_hostel_full.wad"
+set "PWAD=%SCRIPT_DIR%build\py_hostel_full.wad"
 
 if not exist "%DOOM_EXE%" (
     echo Error: Doom executable not found at:
@@ -22,7 +24,7 @@ if not exist "%IWAD%" (
 )
 
 echo Launching map...
-call .\compile_py_map.bat
+call "%SCRIPT_DIR%compile_py_map.bat"
 if errorlevel 1 exit /b 1
 start "UZDoom" "%DOOM_EXE%" -iwad "%IWAD%" -file "%PWAD%" -warp 1
 

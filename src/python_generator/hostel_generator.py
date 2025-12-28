@@ -101,7 +101,9 @@ class HostelGenerator:
                 brown_west_south,
                 brown_ground_east,
                 sill_height=0,
-                window_height=320,
+                window_height=256,
+                floor_tex="RROCK19",
+                ceil_tex="F_SKY1",
             ))
         if brown_west_north is not None:
             self.level.add_connector(Window(
@@ -112,7 +114,9 @@ class HostelGenerator:
                 brown_west_north,
                 brown_ground_east,
                 sill_height=0,
-                window_height=320,
+                window_height=256,
+                floor_tex="RROCK19",
+                ceil_tex="F_SKY1",
             ))
 
         corridor_window_targets_west = []
@@ -152,7 +156,9 @@ class HostelGenerator:
                 buffer_south,
                 lawn,
                 sill_height=0,
-                window_height=320,
+                window_height=256,
+                floor_tex="PYGRASS",
+                ceil_tex="F_SKY1",
             ))
 
         # North buffer segment
@@ -169,7 +175,9 @@ class HostelGenerator:
                 buffer_north,
                 lawn,
                 sill_height=0,
-                window_height=320,
+                window_height=256,
+                floor_tex="PYGRASS",
+                ceil_tex="F_SKY1",
             ))
 
         corridor_window_targets = []
@@ -273,10 +281,10 @@ class HostelGenerator:
         self.level.add_connector(Door(door_x, cross_top_y, door_width, wall_thickness, cross_corridor, mess_hall, state='open', tag=mh_tag, linedef_action=0))
         
         # Switch for Mess Hall
-        # Place inside Cross Corridor near the door
+        # Place inside Cross Corridor near the door -> Move to wall to avoid overlap
         switch_x = door_x - 64
-        switch_y = cross_top_y - 64
-        self.level.add_connector(Switch(switch_x, switch_y, action=42, tag=mh_tag)) # 42 = SR Door Close
+        switch_y = cross_top_y
+        self.level.add_connector(Switch(switch_x, switch_y, action=42, tag=mh_tag, room=cross_corridor)) # 42 = SR Door Close
         
         # 6. Gates (South)
         # "Gates on one side of the lawn from the outside campus"
@@ -293,10 +301,10 @@ class HostelGenerator:
         self.level.add_connector(Door(gate1_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate1_tag, linedef_action=0))
         
         # Switch for Gate 1
-        # Move switch OUTSIDE the lawn to avoid overlapping sectors
+        # Place switch in the wall gap, attached to the outside lawn AND the main lawn
         switch1_x = gate1_x - 32
-        switch1_y = self.start_y - wall_thickness - 32 # Outside
-        self.level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag))
+        switch1_y = self.start_y - wall_thickness
+        self.level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag, room=outside, room2=lawn))
         
         # Gate 2 (Right)
         gate2_tag = self.level.get_new_tag()
@@ -304,10 +312,10 @@ class HostelGenerator:
         self.level.add_connector(Door(gate2_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate2_tag, linedef_action=0))
         
         # Switch for Gate 2
-        # Move switch OUTSIDE the lawn to avoid overlapping sectors
+        # Place switch in the wall gap, attached to the outside lawn AND the main lawn
         switch2_x = gate2_x + gate_width + 16
-        switch2_y = self.start_y - wall_thickness - 32 # Outside
-        self.level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag))
+        switch2_y = self.start_y - wall_thickness
+        self.level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag, room=outside, room2=lawn))
 
         # 7. Stairs + off-map 2nd floor connected via line portals
         # The 2nd floor is a separate copy of the building placed off-map, so doors

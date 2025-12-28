@@ -50,9 +50,46 @@ class HostelGenerator:
         # 2b. Add the West Wing, with a brown outdoor ground strip between it and the Middle Wing.
         # The strip is just an outdoor sector (sky ceiling) with a brown ground flat.
         # Leave a wall-thickness gap so Middle Wing room windows can open onto it.
+        #
+        # We split the strip into two halves (west/east):
+        # - East half: continuous full-height strip used by Middle Wing bedroom windows.
+        # - West half: used by West Wing corridor lookouts, with a vertical cut-out where West Wing stairs bump out.
         brown_width = 512
+        brown_half_w = 256
         brown_ground_x = middle_wing_x - middle_wing.room_width - wall_thickness - brown_width - wall_thickness
-        brown_ground = self.level.add_room(Lawn(brown_ground_x, self.start_y, brown_width, lawn_height, floor_tex="RROCK19"))
+        brown_ground_west_x = brown_ground_x
+        brown_ground_east_x = brown_ground_x + brown_half_w
+
+        # West Wing stairs attach point (used to carve out the brown strip so the stair bump-out doesn't overlap it).
+        west_north_attach_pad = 224
+        west_attach_y = int(self.start_y + wing_height - wall_thickness - stairs_h - west_north_attach_pad)
+        west_stair_reserved_y0 = int(west_attach_y)
+        west_stair_reserved_y1 = int(west_attach_y + hall_h + wall_thickness + step_depth + wall_thickness + step_depth)
+
+        # East half: continuous, full height (for Middle Wing room windows).
+        brown_ground_east = self.level.add_room(Lawn(brown_ground_east_x, self.start_y, brown_half_w, lawn_height, floor_tex="RROCK19"))
+
+        # West half: split into south/north segments around the stairwell cut-out.
+        brown_west_south_h = int(west_stair_reserved_y0 - self.start_y)
+        brown_west_south = None
+        if brown_west_south_h > 0:
+            brown_west_south = self.level.add_room(Lawn(brown_ground_west_x, self.start_y, brown_half_w, brown_west_south_h, floor_tex="RROCK19"))
+
+        brown_west_north_y = int(west_stair_reserved_y1)
+        brown_west_north_h = int((self.start_y + lawn_height) - brown_west_north_y)
+        brown_west_north = None
+        if brown_west_north_h > 0:
+            brown_west_north = self.level.add_room(Lawn(brown_ground_west_x, brown_west_north_y, brown_half_w, brown_west_north_h, floor_tex="RROCK19"))
+
+        brown_ground_west_default = brown_west_south or brown_west_north
+        if brown_ground_west_default is None:
+            raise RuntimeError("West half of brown strip is empty")
+
+        corridor_window_targets_west = []
+        if brown_west_south is not None:
+            corridor_window_targets_west.append((brown_west_south.y, brown_west_south.y + brown_west_south.height, brown_west_south))
+        if brown_west_north is not None:
+            corridor_window_targets_west.append((brown_west_north.y, brown_west_north.y + brown_west_north.height, brown_west_north))
 
         # Generate the Middle Wing now that the brown strip exists, so room windows can look onto it.
         # Re-enable corridor lookouts toward the lawn, but skip the vertical span where the stairwell bump-out attaches.
@@ -117,7 +154,7 @@ class HostelGenerator:
             floor_height=0,
             ceil_height=128,
             story_tag=0,
-            exterior_area=brown_ground,
+            exterior_area=brown_ground_east,
             add_corridor_windows=True,
             corridor_window_skip_ranges=[(middle_stair_reserved_y0, middle_stair_reserved_y1)],
             corridor_window_targets=corridor_window_targets,
@@ -135,7 +172,17 @@ class HostelGenerator:
         west_outside_x = west_wing_x - west_wing.room_width - wall_thickness - west_outside_width - wall_thickness
         west_outside = self.level.add_room(Lawn(west_outside_x, self.start_y, west_outside_width, lawn_height, floor_tex="PYGRASS"))
 
-        west_corridor = west_wing.generate(self.level, brown_ground, floor_height=0, ceil_height=128, story_tag=0, exterior_area=west_outside)
+        west_corridor = west_wing.generate(
+            self.level,
+            brown_ground_west_default,
+            floor_height=0,
+            ceil_height=128,
+            story_tag=0,
+            exterior_area=west_outside,
+            add_corridor_windows=True,
+            corridor_window_skip_ranges=[(west_stair_reserved_y0, west_stair_reserved_y1)],
+            corridor_window_targets=corridor_window_targets_west,
+        )
         
         # 3. Generate East Wing (East of the lawn)
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)
@@ -230,6 +277,48 @@ class HostelGenerator:
 
         # Generate a disconnected 2nd-floor copy of the wings.
         lawn2 = self.level.add_room(Lawn(self.start_x, self.start_y + second_floor_offset_y, lawn_width, lawn_height, floor_tex="PYGRASS"))
+
+        # West Wing off-map copy + its outdoor areas.
+        west_wing_2 = Wing(west_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        west_attach_y_2 = int((self.start_y + second_floor_offset_y) + wing_height - wall_thickness - stairs_h - west_north_attach_pad)
+        west_stair_reserved_y0_2 = int(west_attach_y_2)
+        west_stair_reserved_y1_2 = int(west_attach_y_2 + hall_h + wall_thickness + step_depth + wall_thickness + step_depth)
+
+        # Off-map brown strip west-half segments for West Wing corridor lookouts.
+        brown_west_south_h_2 = int(west_stair_reserved_y0_2 - (self.start_y + second_floor_offset_y))
+        brown_west_south_2 = None
+        if brown_west_south_h_2 > 0:
+            brown_west_south_2 = self.level.add_room(Lawn(brown_ground_west_x, self.start_y + second_floor_offset_y, brown_half_w, brown_west_south_h_2, floor_tex="RROCK19"))
+
+        brown_west_north_y_2 = int(west_stair_reserved_y1_2)
+        brown_west_north_h_2 = int(((self.start_y + second_floor_offset_y) + lawn_height) - brown_west_north_y_2)
+        brown_west_north_2 = None
+        if brown_west_north_h_2 > 0:
+            brown_west_north_2 = self.level.add_room(Lawn(brown_ground_west_x, brown_west_north_y_2, brown_half_w, brown_west_north_h_2, floor_tex="RROCK19"))
+
+        brown_ground_west_default_2 = brown_west_south_2 or brown_west_north_2
+        if brown_ground_west_default_2 is None:
+            raise RuntimeError("West half of off-map brown strip is empty")
+
+        corridor_window_targets_west_2 = []
+        if brown_west_south_2 is not None:
+            corridor_window_targets_west_2.append((brown_west_south_2.y, brown_west_south_2.y + brown_west_south_2.height, brown_west_south_2))
+        if brown_west_north_2 is not None:
+            corridor_window_targets_west_2.append((brown_west_north_2.y, brown_west_north_2.y + brown_west_north_2.height, brown_west_north_2))
+
+        west_outside_2 = self.level.add_room(Lawn(west_outside_x, self.start_y + second_floor_offset_y, west_outside_width, lawn_height, floor_tex="PYGRASS"))
+        west_corridor_2 = west_wing_2.generate(
+            self.level,
+            brown_ground_west_default_2,
+            floor_height=second_floor_floor,
+            ceil_height=second_floor_ceil,
+            story_tag=0,
+            exterior_area=west_outside_2,
+            add_corridor_windows=True,
+            corridor_window_skip_ranges=[(west_stair_reserved_y0_2, west_stair_reserved_y1_2)],
+            corridor_window_targets=corridor_window_targets_west_2,
+        )
+
         middle_wing_2 = Wing(middle_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
         middle_attach_y_2 = int((self.start_y + second_floor_offset_y) + wing_height - wall_thickness - stairs_h - middle_north_attach_pad)
         middle_stair_reserved_y0_2 = int(middle_attach_y_2)
@@ -596,6 +685,7 @@ class HostelGenerator:
         # Portal ids (unique, large values to avoid clashing with sector tags)
         east_portal_ids = (40001, 40002)
         middle_portal_ids = (40003, 40004)
+        west_portal_ids = (40005, 40006)
 
         # Place stairs near the north end of the corridor (toward the cross-corridor / mess hall).
         # Keep them off the room-door wall as much as possible.
@@ -612,8 +702,26 @@ class HostelGenerator:
         # Attach to the OUTSIDE wall of each corridor (a clean wall with no room-door cuts
         # and, if present, fewer window cuts), to avoid overlapping openings that can
         # create blocking geometry.
-        # - East Wing corridor is on the outside east; outside wall is east => side_dir = +1
+        # - West Wing stairs bump out into the brown-strip gap (east)        => side_dir = +1
+        # - East Wing corridor is on the outside east; outside wall is east  => side_dir = +1
         # - Middle Wing stairs bump out into the lawn-side gap (east)        => side_dir = +1
+
+        add_stairwell_to_corridor(
+            west_corridor,
+            side_dir=1,
+            attach_y=west_attach_y,
+            set_spawn=False,
+            portal_target_corridor=west_corridor_2,
+            portal_pair_ids=west_portal_ids,
+        )
+
+        add_second_floor_portal_entry(
+            west_corridor_2,
+            side_dir=1,
+            attach_y=west_attach_y_2,
+            portal_pair_ids=west_portal_ids,
+        )
+
         add_stairwell_to_corridor(
             east_corridor,
             side_dir=1,

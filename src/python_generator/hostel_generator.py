@@ -55,10 +55,15 @@ class HostelGenerator:
         # - East half: continuous full-height strip used by Middle Wing bedroom windows.
         # - West half: used by West Wing corridor lookouts, with a vertical cut-out where West Wing stairs bump out.
         brown_width = 512
-        brown_half_w = 256
+        # Keep the total strip width constant, but leave a wall-thickness gap between halves so the
+        # east<->west connection can be a real opening (a connector sector) that touches BOTH sides.
+        # (If there is no gap, the connector overlaps one side and doesn't register a cut there.)
+        brown_half_w = (brown_width - wall_thickness) // 2  # 248
+        brown_gap_w = wall_thickness
         brown_ground_x = middle_wing_x - middle_wing.room_width - wall_thickness - brown_width - wall_thickness
         brown_ground_west_x = brown_ground_x
-        brown_ground_east_x = brown_ground_x + brown_half_w
+        brown_ground_east_x = brown_ground_x + brown_half_w + brown_gap_w
+        brown_halves_gap_x = brown_ground_west_x + brown_half_w
 
         # West Wing stairs attach point (used to carve out the brown strip so the stair bump-out doesn't overlap it).
         west_north_attach_pad = 224
@@ -84,6 +89,31 @@ class HostelGenerator:
         brown_ground_west_default = brown_west_south or brown_west_north
         if brown_ground_west_default is None:
             raise RuntimeError("West half of brown strip is empty")
+
+        # Connect the brown strip east<->west halves so the strip is traversable.
+        # (We split the west half for the stair cut-out; without these openings, the halves are separated by a wall.)
+        if brown_west_south is not None:
+            self.level.add_connector(Window(
+                brown_halves_gap_x,
+                brown_west_south.y,
+                wall_thickness,
+                brown_west_south.height,
+                brown_west_south,
+                brown_ground_east,
+                sill_height=0,
+                window_height=320,
+            ))
+        if brown_west_north is not None:
+            self.level.add_connector(Window(
+                brown_halves_gap_x,
+                brown_west_north.y,
+                wall_thickness,
+                brown_west_north.height,
+                brown_west_north,
+                brown_ground_east,
+                sill_height=0,
+                window_height=320,
+            ))
 
         corridor_window_targets_west = []
         if brown_west_south is not None:
@@ -215,6 +245,18 @@ class HostelGenerator:
         lawn_conn_width = 256
         lawn_conn_x = self.start_x + (lawn_width // 2) - (lawn_conn_width // 2)
         self.level.add_connector(Window(lawn_conn_x, lawn_top_y, lawn_conn_width, wall_thickness, lawn, cross_corridor, sill_height=0, window_height=128))
+
+        # Connect Brown Ground Strip to Cross Corridor (so it is accessible like the lawn is).
+        self.level.add_connector(Window(
+            brown_ground_east_x,
+            lawn_top_y,
+            brown_half_w,
+            wall_thickness,
+            brown_ground_east,
+            cross_corridor,
+            sill_height=0,
+            window_height=128,
+        ))
         
         # 5. Mess Hall (North of Cross Corridor)
         mess_hall_height = 512

@@ -25,39 +25,58 @@ class HostelGenerator:
         # 1. Create Central Lawn
         lawn = self.level.add_room(Lawn(self.start_x, self.start_y, lawn_width, lawn_height, floor_tex="PYGRASS"))
 
-        # 2. Generate Left Wing (West)
-        # Corridor must face the lawn; rooms are on the outside.
+        # 2. Generate Middle Wing (West of the lawn)
+        # Naming convention used across this project:
+        # - West Wing   : far-left wing
+        # - Middle Wing : wing directly west of the central lawn
+        # - East Wing   : wing east of the central lawn
+        #
+        # Middle Wing corridor faces the lawn; rooms are on the outside.
         # Place corridor so its lawn-facing edge aligns to the lawn via a wall-thickness window gap.
         # (Wing corridor width is 128.)
-        left_wing_x = self.start_x - 128 - wall_thickness
-        left_wing = Wing(left_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
-        left_corridor = left_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
+        middle_wing_x = self.start_x - 128 - wall_thickness
+        middle_wing = Wing(middle_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        middle_corridor = middle_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
+
+        # 2b. Add the West Wing, with a brown outdoor ground strip between it and the Middle Wing.
+        # The strip is just an outdoor sector (sky ceiling) with a brown ground flat.
+        brown_width = 512
+        brown_ground_x = middle_wing_x - middle_wing.room_width - wall_thickness - brown_width
+        brown_ground = self.level.add_room(Lawn(brown_ground_x, self.start_y, brown_width, lawn_height, floor_tex="RROCK19"))
+
+        # Place the West Wing corridor facing the brown strip.
+        # For a left-side wing with corridor_on_lawn_side=True, windows use x = corridor_x + 128
+        # with width=wall_thickness, so brown_ground_x must equal corridor_x + 128 + wall_thickness.
+        west_wing_x = brown_ground_x - (128 + wall_thickness)
+        west_wing = Wing(west_wing_x, self.start_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        west_corridor = west_wing.generate(self.level, brown_ground, floor_height=0, ceil_height=128, story_tag=0)
         
-        # 3. Generate Right Wing (East)
+        # 3. Generate East Wing (East of the lawn)
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)
-        right_rooms_x = self.start_x + lawn_width + 16
-        right_wing = Wing(right_rooms_x, self.start_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        right_corridor = right_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
+        east_rooms_x = self.start_x + lawn_width + wall_thickness
+        east_wing = Wing(east_rooms_x, self.start_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
+        east_corridor = east_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
         
         # 4. Cross Corridor (North)
-        # Connects Left Wing, Right Wing, Lawn, and Mess Hall
+        # Connects West Wing, Middle Wing, East Wing, Lawn, and Mess Hall
         lawn_top_y = self.start_y + lawn_height
         cross_y = lawn_top_y + wall_thickness
         cross_height = 128
-        # Width spans from Left Wing Corridor Left Edge to Right Wing Corridor Right Edge
-        # Left Wing Corridor X: left_wing_x
-        # Right Wing Corridor X: right_wing_x
-        # Right Wing Corridor Width: 128
-        cross_x = left_corridor.x
-        cross_width = (right_corridor.x + 128) - left_corridor.x
+        # Width spans from West Wing Corridor Left Edge to East Wing Corridor Right Edge
+        # (Wing corridor width is 128.)
+        cross_x = west_corridor.x
+        cross_width = (east_corridor.x + 128) - west_corridor.x
         
         cross_corridor = self.level.add_room(Corridor(cross_x, cross_y, cross_width, cross_height))
+
+        # Connect West Wing to Cross Corridor (Opening in the gap)
+        self.level.add_connector(Window(west_corridor.x, lawn_top_y, 128, wall_thickness, west_corridor, cross_corridor, sill_height=0, window_height=128))
         
-        # Connect Left Wing to Cross Corridor (Opening in the gap)
-        self.level.add_connector(Window(left_corridor.x, lawn_top_y, 128, wall_thickness, left_corridor, cross_corridor, sill_height=0, window_height=128))
+        # Connect Middle Wing to Cross Corridor (Opening in the gap)
+        self.level.add_connector(Window(middle_corridor.x, lawn_top_y, 128, wall_thickness, middle_corridor, cross_corridor, sill_height=0, window_height=128))
         
-        # Connect Right Wing to Cross Corridor (Opening in the gap)
-        self.level.add_connector(Window(right_corridor.x, lawn_top_y, 128, wall_thickness, right_corridor, cross_corridor, sill_height=0, window_height=128))
+        # Connect East Wing to Cross Corridor (Opening in the gap)
+        self.level.add_connector(Window(east_corridor.x, lawn_top_y, 128, wall_thickness, east_corridor, cross_corridor, sill_height=0, window_height=128))
         
         # Connect Lawn to Cross Corridor (Wide opening in the gap)
         lawn_conn_width = 256
@@ -95,7 +114,7 @@ class HostelGenerator:
         # Gate 1 (Left)
         gate1_tag = self.level.get_new_tag()
         gate_width = 128
-        gate1_x = self.start_x + 64 # Near Left Wing
+        gate1_x = self.start_x + 64 # Near Middle Wing
         self.level.add_connector(Door(gate1_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate1_tag, linedef_action=0))
         
         # Switch for Gate 1
@@ -105,7 +124,7 @@ class HostelGenerator:
         
         # Gate 2 (Right)
         gate2_tag = self.level.get_new_tag()
-        gate2_x = self.start_x + lawn_width - 64 - gate_width # Near Right Wing
+        gate2_x = self.start_x + lawn_width - 64 - gate_width # Near East Wing
         self.level.add_connector(Door(gate2_x, self.start_y - wall_thickness, gate_width, wall_thickness, outside, lawn, texture="BIGDOOR2", state='open', tag=gate2_tag, linedef_action=0))
         
         # Switch for Gate 2
@@ -130,10 +149,10 @@ class HostelGenerator:
 
         # Generate a disconnected 2nd-floor copy of the wings.
         lawn2 = self.level.add_room(Lawn(self.start_x, self.start_y + second_floor_offset_y, lawn_width, lawn_height, floor_tex="PYGRASS"))
-        left_wing_2 = Wing(left_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        left_corridor_2 = left_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
-        right_wing_2 = Wing(right_rooms_x, self.start_y + second_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        right_corridor_2 = right_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
+        middle_wing_2 = Wing(middle_wing_x, self.start_y + second_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        middle_corridor_2 = middle_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
+        east_wing_2 = Wing(east_rooms_x, self.start_y + second_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
+        east_corridor_2 = east_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0)
 
         def add_stairwell_to_corridor(src_corridor, side_dir: int, *, attach_y: int, set_spawn: bool, portal_target_corridor=None, portal_pair_ids=None):
             hall_h = steps * step_depth
@@ -437,56 +456,56 @@ class HostelGenerator:
             ))
 
         # Portal ids (unique, large values to avoid clashing with sector tags)
-        right_portal_ids = (40001, 40002)
-        left_portal_ids = (40003, 40004)
+        east_portal_ids = (40001, 40002)
+        middle_portal_ids = (40003, 40004)
 
         # Place stairs near the north end of the corridor (toward the cross-corridor / mess hall).
         # Keep them off the room-door wall as much as possible.
         stairs_h = steps * step_depth
         north_attach_pad = 64
-        right_attach_y = int(right_corridor.y + right_corridor.height - wall_thickness - stairs_h - north_attach_pad)
-        left_attach_y = int(left_corridor.y + left_corridor.height - wall_thickness - stairs_h - north_attach_pad)
+        east_attach_y = int(east_corridor.y + east_corridor.height - wall_thickness - stairs_h - north_attach_pad)
+        middle_attach_y = int(middle_corridor.y + middle_corridor.height - wall_thickness - stairs_h - north_attach_pad)
 
-        right_attach_y_2 = int(right_corridor_2.y + right_corridor_2.height - wall_thickness - stairs_h - north_attach_pad)
-        left_attach_y_2 = int(left_corridor_2.y + left_corridor_2.height - wall_thickness - stairs_h - north_attach_pad)
+        east_attach_y_2 = int(east_corridor_2.y + east_corridor_2.height - wall_thickness - stairs_h - north_attach_pad)
+        middle_attach_y_2 = int(middle_corridor_2.y + middle_corridor_2.height - wall_thickness - stairs_h - north_attach_pad)
 
         # Main floor stairwells.
         # Attach to the OUTSIDE wall of each corridor (a clean wall with no room-door cuts
         # and, if present, fewer window cuts), to avoid overlapping openings that can
         # create blocking geometry.
-        # - Right wing corridor is on the outside east; outside wall is east  => side_dir = +1
-        # - Left wing corridor is on the outside west; outside wall is west  => side_dir = -1
+        # - East Wing corridor is on the outside east; outside wall is east  => side_dir = +1
+        # - Middle Wing corridor faces the lawn; we attach to its west side   => side_dir = -1
         add_stairwell_to_corridor(
-            right_corridor,
+            east_corridor,
             side_dir=1,
-            attach_y=right_attach_y,
+            attach_y=east_attach_y,
             set_spawn=True,
-            portal_target_corridor=right_corridor_2,
-            portal_pair_ids=right_portal_ids,
+            portal_target_corridor=east_corridor_2,
+            portal_pair_ids=east_portal_ids,
         )
 
         # Off-map portal entry corresponding to the stairwell top.
         add_second_floor_portal_entry(
-            right_corridor_2,
+            east_corridor_2,
             side_dir=1,
-            attach_y=right_attach_y_2,
-            portal_pair_ids=right_portal_ids,
+            attach_y=east_attach_y_2,
+            portal_pair_ids=east_portal_ids,
         )
 
-        # Left wing: add the same stairs + portal connection to its off-map 2nd floor.
+        # Middle Wing: add the same stairs + portal connection to its off-map 2nd floor.
         add_stairwell_to_corridor(
-            left_corridor,
+            middle_corridor,
             side_dir=-1,
-            attach_y=left_attach_y,
+            attach_y=middle_attach_y,
             set_spawn=False,
-            portal_target_corridor=left_corridor_2,
-            portal_pair_ids=left_portal_ids,
+            portal_target_corridor=middle_corridor_2,
+            portal_pair_ids=middle_portal_ids,
         )
         add_second_floor_portal_entry(
-            left_corridor_2,
+            middle_corridor_2,
             side_dir=-1,
-            attach_y=left_attach_y_2,
-            portal_pair_ids=left_portal_ids,
+            attach_y=middle_attach_y_2,
+            portal_pair_ids=middle_portal_ids,
         )
         
         return self.level

@@ -1,8 +1,18 @@
 from .element import Element
 
-# `omg` is made importable by `src/python_generator/builder.py`, which adds the
-# local omgifol checkout to sys.path early in the generator entrypoints.
-from omg.mapedit import Thing
+import os
+import sys
+
+# Make the vendored `omgifol` library importable even when users import the
+# generator modules directly (without importing `builder.py` first).
+try:
+    from omg.mapedit import Thing
+except ModuleNotFoundError:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    omgifol_path = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "tools", "omgifol"))
+    if omgifol_path not in sys.path:
+        sys.path.append(omgifol_path)
+    from omg.mapedit import Thing
 
 class Furniture(Element):
     def __init__(self, x, y, thing_type, angle=0):

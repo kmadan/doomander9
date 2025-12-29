@@ -1,10 +1,11 @@
+from typing import Optional, List, Tuple
 from .level import Level
 from .geometry import Room, Corridor, Lawn
 from .connectors import Door, Window
 from .prefabs import Bedroom, Bathroom
 
 class Wing:
-    def __init__(self, x, y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True):
+    def __init__(self, x: int, y: int, side: str = 'left', num_rooms_per_side: int = 7, corridor_on_lawn_side: bool = True) -> None:
         self.x = x
         self.y = y
         self.side = side # 'left' means rooms are to the left of the corridor
@@ -22,17 +23,17 @@ class Wing:
         
     def generate(
         self,
-        level,
-        lawn,
-        floor_height=0,
-        ceil_height=128,
+        level: Level,
+        lawn: Room,
+        floor_height: int = 0,
+        ceil_height: int = 128,
         story_tag: int = 0,
-        exterior_area=None,
+        exterior_area: Optional[Room] = None,
         add_corridor_windows: bool = True,
-        corridor_window_skip_ranges=None,
-        corridor_window_targets=None,
-        door_state='closed',
-    ):
+        corridor_window_skip_ranges: Optional[List[Tuple[int, int]]] = None,
+        corridor_window_targets: Optional[List[Tuple[int, int, Room]]] = None,
+        door_state: str = 'closed',
+    ) -> Corridor:
         # If we are creating a 3D-floor second story inside these sectors, the
         # ceiling must be higher than the 2nd-floor height.
         if story_tag:
@@ -135,11 +136,29 @@ class Wing:
 
         def _resolve_target_room(y0: int, y1: int):
             # If provided, targets are (y0, y1, room) tuples in world coordinates.
+            # Prefer the target that overlaps this window span the most.
+            # (Strict containment is brittle and can cause windows to fall back
+            # to a non-adjacent lawn sector, producing blocked/boxed windows.)
+            best_room = None
+            best_overlap = 0
             for ty0, ty1, room in targets:
                 ay0 = int(ty0)
                 ay1 = int(ty1)
-                if y0 >= ay0 and y1 <= ay1:
-                    return room
+                overlap = min(int(y1), ay1) - max(int(y0), ay0)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_room = room
+
+            if best_room is not None and best_overlap > 0:
+                return best_room
+
+            # If the caller provided explicit targets (e.g., buffer-strip segments),
+            # falling back to `lawn` can create a non-adjacent window target and
+            # the window will appear fully blocked. Prefer *some* provided target
+            # over the default lawn in this case.
+            if targets:
+                return targets[0][2]
+
             return lawn
 
         if add_corridor_windows and self.corridor_on_lawn_side:
@@ -174,7 +193,7 @@ class Wing:
             
         return corridor
 
-    def _create_room(self, level, x, y, corridor, door_side, lawn=None, exterior_area=None, floor_height=0, ceil_height=128, story_tag: int = 0, door_state='closed'):
+    def _create_room(self, level: Level, x: int, y: int, corridor: Room, door_side: str, lawn: Optional[Room] = None, exterior_area: Optional[Room] = None, floor_height: int = 0, ceil_height: int = 128, story_tag: int = 0, door_state: str = 'closed') -> None:
         room = level.add_room(Bedroom(x, y, self.room_width, self.room_height))
         room.floor_height = floor_height
         room.ceil_height = ceil_height

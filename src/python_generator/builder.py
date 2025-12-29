@@ -192,6 +192,21 @@ class WadBuilder:
         thing.flags = 7 # Easy, Medium, Hard
         self.editor.things.append(thing)
 
+    def import_texture(self, name, file_path):
+        """
+        Import a PNG texture into the WAD's TX_START/TX_END namespace (ZDoom).
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                data = f.read()
+            # Add to ztextures (TX_START/TX_END)
+            # The key should be the texture name (up to 8 chars)
+            # We use Graphic class to wrap the data
+            self.wad.ztextures[name] = Graphic(data)
+            print(f"Imported texture {name} from {file_path}")
+        except Exception as e:
+            print(f"Failed to import texture {name}: {e}")
+
     def save(self, filename):
         # Ensure our outdoor lawn flat exists even if the user's IWAD doesn't ship with it.
         # This prevents missing-flat fallbacks and makes the lawn deterministic.

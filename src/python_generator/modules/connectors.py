@@ -1,19 +1,23 @@
+from typing import Optional, TYPE_CHECKING
 from .element import Element
 
+if TYPE_CHECKING:
+    from .geometry import Room
+
 class Connector(Element):
-    def __init__(self, x, y, width, height, room1, room2):
+    def __init__(self, x: int, y: int, width: int, height: int, room1: Optional['Room'], room2: Optional['Room'] = None) -> None:
         super().__init__(x, y)
         self.width = width
         self.height = height
         self.room1 = room1
         self.room2 = room2
 
-    def register_cuts(self):
+    def register_cuts(self) -> None:
         # Determine relationship with room1
         if self.room1: self._add_cut_to_room(self.room1)
         if self.room2: self._add_cut_to_room(self.room2)
         
-    def _add_cut_to_room(self, room):
+    def _add_cut_to_room(self, room: 'Room') -> None:
         # Check overlap with room edges
         # If Connector Left == Room Right
         if self.x == room.x + room.width:
@@ -130,7 +134,7 @@ class Door(Connector):
                 pass
 
 class Switch(Element):
-    def __init__(self, x, y, action, tag, room=None, room2=None):
+    def __init__(self, x: int, y: int, action: int, tag: int, room: Optional['Room'] = None, room2: Optional['Room'] = None) -> None:
         super().__init__(x, y)
         self.action = action
         self.tag = tag
@@ -139,7 +143,7 @@ class Switch(Element):
         self.width = 16
         self.height = 16
         
-    def register_cuts(self):
+    def register_cuts(self) -> None:
         rooms = []
         if self.room: rooms.append(self.room)
         if self.room2: rooms.append(self.room2)
@@ -327,11 +331,14 @@ class Window(Connector):
             (self.x, self.y + self.height)
         ]
         
-        base_floor = 0
-        if getattr(self.room1, 'floor_height', None) is not None:
-            base_floor = self.room1.floor_height
-        elif getattr(self.room2, 'floor_height', None) is not None:
-            base_floor = self.room2.floor_height
+        # Windows need to vertically overlap both adjacent sectors.
+        # On raised/off-map floors (e.g., 2nd floor copies), the interior room can
+        # have a higher floor than the exterior Lawn. If we key the window sector
+        # off the exterior (often 0), the window sector ends up entirely below the
+        # interior floor and the window appears fully blocked.
+        fh1 = getattr(self.room1, 'floor_height', None)
+        fh2 = getattr(self.room2, 'floor_height', None)
+        base_floor = int(max([h for h in (fh1, fh2) if h is not None] or [0]))
 
         # If both adjacent rooms share the same non-zero tag, propagate it so
         # UDMF 3D floors can span through this opening.
@@ -374,6 +381,7 @@ class Window(Connector):
                 
             if is_window_face:
                 pass
+
 
 
 class Portal(Connector):

@@ -14,6 +14,14 @@ def main():
     print("Initializing WadBuilder...")
     builder = WadBuilder()
     
+    # Import custom textures
+    assets_dir = os.path.abspath(os.path.join(current_dir, "../../assets"))
+    sign_path = os.path.join(assets_dir, "pluto-grok-slab.png")
+    if os.path.exists(sign_path):
+        builder.import_texture("PLUTOSGN", sign_path)
+    else:
+        print(f"Warning: Sign texture not found at {sign_path}")
+
     print("Generating Hostel Layout...")
     generator = HostelGenerator(start_x=0, start_y=0)
     level = generator.generate()

@@ -4,3 +4,8 @@
 
 build\
 .vscode
+
+pycache__/
+__pycache__/
+*.pyc
+*.pyo

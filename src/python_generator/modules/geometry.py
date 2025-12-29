@@ -1,7 +1,7 @@
 from .element import Element
 
 class Room(Element):
-    def __init__(self, x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STARTAN3", ceil_tex="CEIL3_5", floor_height=0, ceil_height=128, tag=0):
+    def __init__(self, x: int, y: int, width: int, height: int, floor_tex: str = "FLOOR4_8", wall_tex: str = "STARTAN3", ceil_tex: str = "CEIL3_5", floor_height: int = 0, ceil_height: int = 128, tag: int = 0) -> None:
         super().__init__(x, y)
         self.width = width
         self.height = height

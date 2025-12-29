@@ -2,7 +2,7 @@ from .geometry import Room
 from .furniture import Bed, Table, Chair, Plant
 
 class Bedroom(Room):
-    def __init__(self, x, y, width=256, height=256):
+    def __init__(self, x: int, y: int, width: int = 256, height: int = 256) -> None:
         super().__init__(x, y, width, height, floor_tex="FLOOR5_2", wall_tex="BROWN96")
         
         # Add Bed (Top Left Corner)
@@ -13,7 +13,7 @@ class Bedroom(Room):
         self.add_furniture(Chair(x + width - 80, y + 48, angle=180))
 
 class CommonRoom(Room):
-    def __init__(self, x, y, width=384, height=384):
+    def __init__(self, x: int, y: int, width: int = 384, height: int = 384) -> None:
         super().__init__(x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STONE2")
         
         # Add Large Table (Center)
@@ -33,7 +33,7 @@ class CommonRoom(Room):
         self.add_furniture(Plant(x + width - 32, y + height - 32))
 
 class Bathroom(Room):
-    def __init__(self, x, y, width=128, height=192):
+    def __init__(self, x: int, y: int, width: int = 128, height: int = 192) -> None:
         super().__init__(x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STARGR1")
         # Add "Stalls" (represented by pillars for now)
         self.add_furniture(Plant(x + 32, y + height - 32)) # Sink?

@@ -467,16 +467,20 @@ class Portal(Connector):
         tagged = False
         if edge is not None:
             (ax, ay), (bx, by) = edge
-            axy = (int(ax), int(ay))
-            bxy = (int(bx), int(by))
+            ax = int(ax)
+            ay = int(ay)
+            bx = int(bx)
+            by = int(by)
+
+            is_h = (ay == by)
+            is_v = (ax == bx)
+            min_x = int(min(ax, bx))
+            max_x = int(max(ax, bx))
+            min_y = int(min(ay, by))
+            max_y = int(max(ay, by))
+
             for ld in builder.editor.linedefs:
                 if ld.back == 0xFFFF:
-                    continue
-                v1 = builder.editor.vertexes[ld.vx_a]
-                v2 = builder.editor.vertexes[ld.vx_b]
-                p1 = _v_xy(v1)
-                p2 = _v_xy(v2)
-                if not ((p1 == axy and p2 == bxy) or (p1 == bxy and p2 == axy)):
                     continue
 
                 front_sector = builder.editor.sidedefs[ld.front].sector
@@ -484,11 +488,30 @@ class Portal(Connector):
                 if portal_sector_index not in (front_sector, back_sector):
                     continue
 
+                v1 = builder.editor.vertexes[ld.vx_a]
+                v2 = builder.editor.vertexes[ld.vx_b]
+                (x1, y1) = _v_xy(v1)
+                (x2, y2) = _v_xy(v2)
+
+                # Accept portal-edge segments even if the edge was split into multiple linedefs.
+                if is_h:
+                    if y1 != ay or y2 != ay:
+                        continue
+                    if max(min(x1, x2), min_x) > min(max(x1, x2), max_x):
+                        continue
+                elif is_v:
+                    if x1 != ax or x2 != ax:
+                        continue
+                    if max(min(y1, y2), min_y) > min(max(y1, y2), max_y):
+                        continue
+                else:
+                    # Should never happen for axis-aligned rectangles.
+                    continue
+
                 ld.tag = int(self.source_line_id)
                 builder.editor.sidedefs[ld.front].tx_mid = "-"
                 builder.editor.sidedefs[ld.back].tx_mid = "-"
                 tagged = True
-                break
 
         if not tagged:
             # Fallback: tag the first two-sided boundary line that touches the portal sector.

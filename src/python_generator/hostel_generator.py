@@ -1,3 +1,5 @@
+import os
+
 from typing import Tuple, Optional, Dict
 from modules.level import Level
 from modules.geometry import Lawn, Room
@@ -683,6 +685,18 @@ class HostelGenerator:
             north_attach_pad=west_north_attach_pad,
         )
 
+        # Middle/West have an additional F2->F3 stair extension. It starts from the
+        # F2 portal-entry landing and runs north, so we must extend the *upper*
+        # reserved bound to avoid building outdoor sectors in that space.
+        stair_ext_span_h = int(
+            (int(self.stairs_spec.steps) + 2) * (int(self.stairs_spec.wall_thickness) + int(self.stairs_spec.step_depth))
+            + int(self.stairs_spec.step_depth)
+        )
+        west_stair_reserved_y1_2_ext = int(west_stair_reserved_y1_2 + stair_ext_span_h)
+
+        # Reserved span is used to carve out outdoor sectors where the stairwell
+        # bump-out sits (prevents overlaps).
+
         # Off-map brown strip west-half segments for West Wing corridor lookouts.
         brown_west_2 = build_brown_west_half_segments(
             self.level,
@@ -691,7 +705,7 @@ class HostelGenerator:
             height=lawn_height,
             half_w=brown_half_w,
             reserved_y0=west_stair_reserved_y0_2,
-            reserved_y1=west_stair_reserved_y1_2,
+            reserved_y1=west_stair_reserved_y1_2_ext,
             floor_tex="RROCK19",
         )
 
@@ -716,7 +730,7 @@ class HostelGenerator:
             story_tag=0,
             exterior_area=west_outside_2,
             add_corridor_windows=True,
-            corridor_window_skip_ranges=[(west_stair_reserved_y0_2, west_stair_reserved_y1_2)],
+            corridor_window_skip_ranges=[(west_stair_reserved_y0_2, west_stair_reserved_y1_2_ext)],
             corridor_window_targets=corridor_window_targets_west_2,
             door_state='closed',
         )
@@ -732,6 +746,8 @@ class HostelGenerator:
             north_attach_pad=middle_north_attach_pad,
         )
 
+        middle_stair_reserved_y1_2_ext = int(middle_stair_reserved_y1_2 + stair_ext_span_h)
+
         # Off-map buffer strip between Middle corridor and off-map lawn2.
         # Important: preserve connector texture defaults by not passing floor/ceil textures.
         buffer_2 = build_middle_lawn_buffer(
@@ -742,11 +758,16 @@ class HostelGenerator:
             middle_wing_x=middle_wing_x,
             lawn=lawn2,
             reserved_y0=middle_stair_reserved_y0_2,
-            reserved_y1=middle_stair_reserved_y1_2,
+            reserved_y1=middle_stair_reserved_y1_2_ext,
             floor_tex="PYGRASS",
-            connect_window_height=(second_floor_ceil - second_floor_floor),
-            connect_sill_height=second_floor_floor,
-            pass_window_textures=False,
+            # Keep the buffer→lawn connection at ground level so it doesn't show up
+            # as a raised "grass ledge" (floating strip) from the upper corridor.
+            # Ceiling is still high enough for 2nd-floor sightlines.
+            connect_window_height=int(second_floor_ceil),
+            connect_sill_height=0,
+            # Use sky ceiling for elevated outdoor connectors to avoid visible
+            # "floating ceiling" strips against the sky.
+            pass_window_textures=True,
         )
 
         # Outdoor buffer segments stay at floor 0 but need tall ceilings.
@@ -804,7 +825,7 @@ class HostelGenerator:
             story_tag=0,
             exterior_area=brown_ground_east_2,
             add_corridor_windows=True,
-            corridor_window_skip_ranges=[(middle_stair_reserved_y0_2, middle_stair_reserved_y1_2)],
+            corridor_window_skip_ranges=[(middle_stair_reserved_y0_2, middle_stair_reserved_y1_2_ext)],
             corridor_window_targets=corridor_window_targets_2,
             door_state='closed',
         )
@@ -818,6 +839,8 @@ class HostelGenerator:
         middle_portal_ids = (40003, 40004)
         west_portal_ids = (40005, 40006)
         east_portal_ids_2_3 = (40007, 40008)
+        middle_portal_ids_2_3 = (40009, 40010)
+        west_portal_ids_2_3 = (40011, 40012)
 
         # Place stairs near the north end of the corridor (toward the cross-corridor / mess hall).
         # Keep them off the room-door wall as much as possible.
@@ -849,7 +872,7 @@ class HostelGenerator:
             spec=self.stairs_spec,
         )
 
-        add_second_floor_portal_entry(
+        f2_arrival_west = add_second_floor_portal_entry(
             self.level,
             west_corridor_2,
             side_dir=1,
@@ -890,7 +913,7 @@ class HostelGenerator:
             portal_pair_ids=middle_portal_ids,
             spec=self.stairs_spec,
         )
-        add_second_floor_portal_entry(
+        f2_arrival_middle = add_second_floor_portal_entry(
             self.level,
             middle_corridor_2,
             side_dir=1,
@@ -899,12 +922,20 @@ class HostelGenerator:
             spec=self.stairs_spec,
         )
 
-        # 8. Third Floor (East Wing Only)
+        # Fast iteration spawn (optional): set `H9_SPAWN=middle_f2` to start at the
+        # Middle-wing F2->F3 landing.
+        if str(os.environ.get('H9_SPAWN', '')).lower().strip() in ("middle_f2", "mid_f2"):
+            self.level.test_spawn = (
+                int(f2_arrival_middle['landing'].x + (self.stairs_spec.stair_w // 2)),
+                int(f2_arrival_middle['landing'].y + (self.stairs_spec.step_depth // 2)),
+                270,
+            )
+
+        # 8. Third Floor (full copy matching 2nd floor semantics)
         third_floor_offset_y = -12000
         third_floor_floor = 2 * self.steps * self.rise
         third_floor_ceil = third_floor_floor + 128
-        
-        # Generate 3rd floor East Wing
+
         lawn3 = build_central_lawn(
             self.level,
             x=self.start_x,
@@ -913,56 +944,240 @@ class HostelGenerator:
             height=lawn_height,
             floor_tex="PYGRASS",
         )
+        lawn3.floor_height = 0
+        lawn3.ceil_height = max(int(getattr(lawn3, 'ceil_height', 0) or 0), int(third_floor_ceil))
+
+        # West Wing 3rd floor copy + outdoors
+        west_attach_y_3, west_stair_reserved_y0_3, west_stair_reserved_y1_3 = compute_stair_attach_and_reserved_span(
+            start_y=self.start_y + third_floor_offset_y,
+            wing_height=wing_height,
+            wall_thickness=self.wall_thickness,
+            stairs_h=self.stairs_h,
+            hall_h=self.hall_h,
+            step_depth=self.step_depth,
+            north_attach_pad=west_north_attach_pad,
+        )
+
+        brown_west_3 = build_brown_west_half_segments(
+            self.level,
+            west_x=brown_ground_west_x,
+            start_y=self.start_y + third_floor_offset_y,
+            height=lawn_height,
+            half_w=brown_half_w,
+            reserved_y0=west_stair_reserved_y0_3,
+            reserved_y1=west_stair_reserved_y1_3,
+            floor_tex="RROCK19",
+        )
+        for _r in (brown_west_3.west_default, brown_west_3.west_south, brown_west_3.west_north):
+            if _r is None:
+                continue
+            _r.floor_height = 0
+            _r.ceil_height = max(int(getattr(_r, 'ceil_height', 0) or 0), int(third_floor_ceil))
+
+        west_outside_3 = self.level.add_room(
+            Lawn(west_outside_x, self.start_y + third_floor_offset_y, west_outside_width, lawn_height, floor_tex="PYGRASS")
+        )
+        west_outside_3.floor_height = 0
+        west_outside_3.ceil_height = max(int(getattr(west_outside_3, 'ceil_height', 0) or 0), int(third_floor_ceil))
+
+        west_wing_3 = Wing(west_wing_x, self.start_y + third_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        west_corridor_3 = west_wing_3.generate(
+            self.level,
+            brown_west_3.west_default,
+            floor_height=third_floor_floor,
+            ceil_height=third_floor_ceil,
+            story_tag=0,
+            exterior_area=west_outside_3,
+            add_corridor_windows=True,
+            corridor_window_skip_ranges=[(west_stair_reserved_y0_3, west_stair_reserved_y1_3)],
+            corridor_window_targets=brown_west_3.corridor_window_targets_west,
+            door_state='closed',
+        )
+
+        # Middle Wing 3rd floor copy + buffer + brown east half (for bedroom windows)
+        middle_attach_y_3, middle_stair_reserved_y0_3, middle_stair_reserved_y1_3 = compute_stair_attach_and_reserved_span(
+            start_y=self.start_y + third_floor_offset_y,
+            wing_height=wing_height,
+            wall_thickness=self.wall_thickness,
+            stairs_h=self.stairs_h,
+            hall_h=self.hall_h,
+            step_depth=self.step_depth,
+            north_attach_pad=middle_north_attach_pad,
+        )
+
+        buffer_3 = build_middle_lawn_buffer(
+            self.level,
+            start_y=self.start_y + third_floor_offset_y,
+            height=lawn_height,
+            wall_thickness=self.wall_thickness,
+            middle_wing_x=middle_wing_x,
+            lawn=lawn3,
+            reserved_y0=middle_stair_reserved_y0_3,
+            reserved_y1=middle_stair_reserved_y1_3,
+            floor_tex="PYGRASS",
+            connect_window_height=int(third_floor_ceil),
+            connect_sill_height=0,
+            pass_window_textures=True,
+        )
+        for _r in (buffer_3.south, buffer_3.north):
+            if _r is None:
+                continue
+            _r.floor_height = 0
+            _r.ceil_height = max(int(getattr(_r, 'ceil_height', 0) or 0), int(third_floor_ceil))
+
+        brown_ground_east_3 = self.level.add_room(
+            Lawn(
+                int(brown_ground_east_x),
+                int(self.start_y + third_floor_offset_y),
+                int(brown_half_w),
+                int(lawn_height),
+                floor_tex="RROCK19",
+            )
+        )
+        brown_ground_east_3.floor_height = 0
+        brown_ground_east_3.ceil_height = max(int(getattr(brown_ground_east_3, 'ceil_height', 0) or 0), int(third_floor_ceil))
+
+        # Connect brown halves at elevated window height for sightlines.
+        halves_gap_x_3 = int(brown_ground_west_x) + int(brown_half_w)
+        connect_h_3 = int(third_floor_ceil - third_floor_floor)
+        for _seg in (brown_west_3.west_south, brown_west_3.west_north):
+            if _seg is None:
+                continue
+            self.level.add_connector(
+                Window(
+                    halves_gap_x_3,
+                    int(_seg.y),
+                    int(self.wall_thickness),
+                    int(_seg.height),
+                    _seg,
+                    brown_ground_east_3,
+                    sill_height=int(third_floor_floor),
+                    window_height=connect_h_3,
+                    floor_tex=str(_seg.floor_tex),
+                    ceil_tex="F_SKY1",
+                )
+            )
+
+        middle_wing_3 = Wing(middle_wing_x, self.start_y + third_floor_offset_y, side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+        middle_corridor_3 = middle_wing_3.generate(
+            self.level,
+            lawn3,
+            floor_height=third_floor_floor,
+            ceil_height=third_floor_ceil,
+            story_tag=0,
+            exterior_area=brown_ground_east_3,
+            add_corridor_windows=True,
+            corridor_window_skip_ranges=[(middle_stair_reserved_y0_3, middle_stair_reserved_y1_3)],
+            corridor_window_targets=buffer_3.corridor_window_targets,
+            door_state='closed',
+        )
+
+        # East Wing 3rd floor copy
         east_wing_3 = Wing(east_rooms_x, self.start_y + third_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        east_corridor_3 = east_wing_3.generate(self.level, lawn3, floor_height=third_floor_floor, ceil_height=third_floor_ceil, story_tag=0, door_state='open')
-        
-        # Add stairs from 2nd floor to 3rd floor (Extension from F2 Arrival Landing)
-        # We use the landing from f2_arrival as the start point.
-        # The stairs go UP from there.
+        east_corridor_3 = east_wing_3.generate(self.level, lawn3, floor_height=third_floor_floor, ceil_height=third_floor_ceil, story_tag=0, door_state='closed')
+
+        # Extend stairs from F2 arrivals up to F3, then add corresponding portal entries on F3.
         add_stair_extension(
             self.level,
             f2_arrival['landing'],
             portal_pair_ids=east_portal_ids_2_3,
             floor_height=second_floor_floor,
-            ceil_height=second_floor_ceil
+            ceil_height=third_floor_ceil,
+            direction="east",
+            spec=self.stairs_spec,
         )
-        
-        # Add portal entry on 3rd floor
-        # We need to place the F3 Arrival structure such that it aligns with the F2 Departure.
-        # F2 Departure Threshold is at the North end of the extension.
-        # We need to connect F3 Arrival to F3 Corridor.
-        # Since F2 Departure extends North, F3 Arrival will be far North of the corridor.
-        # We'll use add_second_floor_portal_entry but we need to calculate the attach_y carefully
-        # OR we can just attach it to the corridor at the top and let it overlap/extend?
-        # No, add_second_floor_portal_entry attaches to the corridor side.
-        # If we attach it at the top of the corridor, it will be fine.
-        # But we want the "Landing" of F3 Arrival to match the "Threshold" of F2 Departure?
-        # No, Portals don't require spatial alignment, just logical connection.
-        # So we can place F3 Arrival anywhere on F3.
-        # Let's place it at the same relative Y as F2 Arrival, to keep it simple.
-        # This means you walk North on F2, teleport, and appear at the South end of F3 Arrival?
-        # No, F3 Arrival (add_second_floor_portal_entry) is oriented South-to-North (Hall->Steps->Landing).
-        # You arrive at Landing (North).
-        # So if you walk North on F2 and teleport, you should arrive at South end of F3?
-        # If F2->F3 Portal is at North end of F2 Extension.
-        # And F3 Portal is at North end of F3 Arrival (Landing).
-        # Then you walk North, hit portal, appear at North end of F3 Arrival, facing... South?
-        # If you face North entering F2 Portal, you should face North exiting F3 Portal?
-        # But F3 Arrival Landing is at the North end.
-        # If you exit facing North, you walk into the void.
-        # You need to turn around (South) to go to the Hall.
-        # This is standard for "Portal at end of hall".
-        # So this is fine.
-        
-        # Calculate attach Y for 3rd floor (same relative position as 2nd floor)
-        east_attach_y_3 = int(east_corridor_3.y + east_corridor_3.height - self.wall_thickness - self.stairs_h - east_north_attach_pad)
 
+        # Middle/West: the F1<->F2 portal line sits on the landing's north edge.
+        # Starting an extension directly north of that landing would immediately
+        # hit the portal. Starting west/east causes x-sweeping overlaps.
+        #
+        # Instead, add a small pad off the landing side and run the extension
+        # north from that pad.
+        pad_w = int(self.stairs_spec.stair_w)
+        pad_h = int(self.stairs_spec.step_depth)
+        pad_wall = int(self.stairs_spec.wall_thickness)
+
+        def _add_f2_to_f3_pad(arrival: Dict[str, Room]) -> Room:
+            landing = arrival['landing']
+            pad_x = int(landing.x - pad_wall - pad_w)
+            pad_y = int(landing.y)
+            pad = self.level.add_room(
+                Room(
+                    pad_x,
+                    pad_y,
+                    pad_w,
+                    pad_h,
+                    floor_tex=landing.floor_tex,
+                    wall_tex=landing.wall_tex,
+                    ceil_tex=landing.ceil_tex,
+                    floor_height=int(getattr(landing, 'floor_height', 0) or 0),
+                    ceil_height=int(getattr(landing, 'ceil_height', 0) or 0),
+                )
+            )
+
+            opening_h = int(max(1, int(getattr(landing, 'ceil_height', 0) or 0) - int(getattr(landing, 'floor_height', 0) or 0)))
+            self.level.add_connector(
+                Window(
+                    int(landing.x - pad_wall),
+                    pad_y,
+                    pad_wall,
+                    pad_h,
+                    pad,
+                    landing,
+                    sill_height=0,
+                    window_height=opening_h,
+                    floor_tex=landing.floor_tex,
+                    ceil_tex=landing.ceil_tex,
+                    wall_tex=landing.wall_tex,
+                )
+            )
+            return pad
+
+        middle_pad = _add_f2_to_f3_pad(f2_arrival_middle)
+        add_stair_extension(
+            self.level,
+            middle_pad,
+            portal_pair_ids=middle_portal_ids_2_3,
+            floor_height=second_floor_floor,
+            ceil_height=third_floor_ceil,
+            direction="north",
+            spec=self.stairs_spec,
+        )
+
+        west_pad = _add_f2_to_f3_pad(f2_arrival_west)
+        add_stair_extension(
+            self.level,
+            west_pad,
+            portal_pair_ids=west_portal_ids_2_3,
+            floor_height=second_floor_floor,
+            ceil_height=third_floor_ceil,
+            direction="north",
+            spec=self.stairs_spec,
+        )
+
+        east_attach_y_3 = int(east_corridor_3.y + east_corridor_3.height - self.wall_thickness - self.stairs_h - east_north_attach_pad)
         add_second_floor_portal_entry(
             self.level,
             east_corridor_3,
             side_dir=1,
             attach_y=east_attach_y_3,
             portal_pair_ids=east_portal_ids_2_3,
+            spec=self.stairs_spec,
+        )
+        add_second_floor_portal_entry(
+            self.level,
+            middle_corridor_3,
+            side_dir=1,
+            attach_y=middle_attach_y_3,
+            portal_pair_ids=middle_portal_ids_2_3,
+            spec=self.stairs_spec,
+        )
+        add_second_floor_portal_entry(
+            self.level,
+            west_corridor_3,
+            side_dir=1,
+            attach_y=west_attach_y_3,
+            portal_pair_ids=west_portal_ids_2_3,
             spec=self.stairs_spec,
         )
         

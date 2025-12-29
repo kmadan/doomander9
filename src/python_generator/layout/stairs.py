@@ -211,7 +211,7 @@ def add_stairwell_to_corridor(
             )
         )
 
-    if set_spawn and not hasattr(level, "test_spawn"):
+    if set_spawn and getattr(level, "test_spawn", None) is None:
         spawn_x = hall_x + (spec.hall_w // 2)
         spawn_y = hall_y + spec.corridor_door_y_offset
         spawn_angle = 0 if side_dir > 0 else 180
@@ -392,6 +392,8 @@ def add_stair_extension(
     portal_pair_ids: Tuple[int, int],
     floor_height: int,
     ceil_height: int,
+    direction: str = "north",
+    start_clearance: int = 0,
     spec: StairsSpec = StairsSpec(),
 ) -> Room:
     """Build an additional flight of stairs starting north of `start_room`.
@@ -399,40 +401,105 @@ def add_stair_extension(
     Returns the created threshold room.
     """
 
-    start_y = start_room.y + start_room.height + spec.wall_thickness
-    start_x = start_room.x
+    direction = str(direction).lower().strip()
+    if direction not in ("north", "east", "south", "west"):
+        raise ValueError(f"Invalid direction for stair extension: {direction}")
 
-    current_y = int(start_y)
+    # Important: connectors register cuts only when they lie exactly on a room edge.
     prev_room: Room = start_room
+
+    # Starting connector origin (just outside start_room on the chosen side).
+    # `start_clearance` can be used to skip past known geometry immediately
+    # adjacent to `start_room` (e.g., an existing portal strip + threshold).
+    clearance = int(start_clearance)
+    if direction == "north":
+        cursor_x = int(start_room.x)
+        cursor_y = int(start_room.y + start_room.height + clearance)
+    elif direction == "south":
+        cursor_x = int(start_room.x)
+        cursor_y = int(start_room.y - spec.wall_thickness - clearance)
+    elif direction == "east":
+        cursor_x = int(start_room.x + start_room.width + clearance)
+        cursor_y = int(start_room.y)
+    else:  # west
+        cursor_x = int(start_room.x - spec.wall_thickness - clearance)
+        cursor_y = int(start_room.y)
 
     for i in range(spec.steps):
         step_floor = int(floor_height + (i + 1) * spec.rise)
 
-        step_y = current_y + spec.wall_thickness
-        step_room = level.add_room(
-            Room(
-                start_x,
-                step_y,
-                spec.stair_w,
-                spec.step_depth,
-                floor_tex=start_room.floor_tex,
-                wall_tex=start_room.wall_tex,
-                ceil_tex=start_room.ceil_tex,
-                floor_height=step_floor,
-                ceil_height=ceil_height,
+        if direction in ("north", "south"):
+            # Horizontal connector strip (touches prev_room top/bottom).
+            connector_x = int(start_room.x)
+            connector_y = int(cursor_y)
+            connector_w = int(spec.stair_w)
+            connector_h = int(spec.wall_thickness)
+
+            if direction == "north":
+                step_x = int(start_room.x)
+                step_y = int(connector_y + spec.wall_thickness)
+                cursor_y = int(step_y + spec.step_depth)
+            else:  # south
+                step_x = int(start_room.x)
+                step_y = int(connector_y - spec.step_depth)
+                cursor_y = int(step_y - spec.wall_thickness)
+
+            step_room = level.add_room(
+                Room(
+                    step_x,
+                    step_y,
+                    spec.stair_w,
+                    spec.step_depth,
+                    floor_tex=start_room.floor_tex,
+                    wall_tex=start_room.wall_tex,
+                    ceil_tex=start_room.ceil_tex,
+                    floor_height=step_floor,
+                    ceil_height=ceil_height,
+                )
             )
-        )
+        else:
+            # Vertical connector strip (touches prev_room left/right).
+            connector_x = int(cursor_x)
+            connector_y = int(start_room.y)
+            connector_w = int(spec.wall_thickness)
+            connector_h = int(spec.step_depth)
+
+            if direction == "east":
+                step_x = int(connector_x + spec.wall_thickness)
+                step_y = int(start_room.y)
+                cursor_x = int(step_x + spec.stair_w)
+            else:  # west
+                step_x = int(connector_x - spec.stair_w)
+                step_y = int(start_room.y)
+                cursor_x = int(step_x - spec.wall_thickness)
+
+            step_room = level.add_room(
+                Room(
+                    step_x,
+                    step_y,
+                    spec.stair_w,
+                    spec.step_depth,
+                    floor_tex=start_room.floor_tex,
+                    wall_tex=start_room.wall_tex,
+                    ceil_tex=start_room.ceil_tex,
+                    floor_height=step_floor,
+                    ceil_height=ceil_height,
+                )
+            )
+
+        base_floor = int(max(int(getattr(prev_room, 'floor_height', 0)), int(getattr(step_room, 'floor_height', 0))))
+        opening_h = int(max(1, int(ceil_height) - base_floor))
 
         level.add_connector(
             Window(
-                start_x,
-                current_y,
-                spec.stair_w,
-                spec.wall_thickness,
+                connector_x,
+                connector_y,
+                connector_w,
+                connector_h,
                 prev_room,
                 step_room,
                 sill_height=0,
-                window_height=ceil_height,
+                window_height=opening_h,
                 floor_tex=start_room.floor_tex,
                 ceil_tex=start_room.ceil_tex,
                 wall_tex=start_room.wall_tex,
@@ -440,60 +507,115 @@ def add_stair_extension(
         )
 
         prev_room = step_room
-        current_y = int(step_y + spec.step_depth)
 
-    landing_y = current_y + spec.wall_thickness
+    # Final landing after the last step.
+    landing_floor = int(floor_height + spec.steps * spec.rise)
+
+    if direction in ("north", "south"):
+        landing_connector_x = int(start_room.x)
+        landing_connector_y = int(cursor_y)
+        landing_connector_w = int(spec.stair_w)
+        landing_connector_h = int(spec.wall_thickness)
+
+        if direction == "north":
+            landing_x = int(start_room.x)
+            landing_y = int(landing_connector_y + spec.wall_thickness)
+        else:
+            landing_x = int(start_room.x)
+            landing_y = int(landing_connector_y - spec.step_depth)
+    else:
+        landing_connector_x = int(cursor_x)
+        landing_connector_y = int(start_room.y)
+        landing_connector_w = int(spec.wall_thickness)
+        landing_connector_h = int(spec.step_depth)
+
+        if direction == "east":
+            landing_x = int(landing_connector_x + spec.wall_thickness)
+            landing_y = int(start_room.y)
+        else:
+            landing_x = int(landing_connector_x - spec.stair_w)
+            landing_y = int(start_room.y)
+
     landing = level.add_room(
         Room(
-            start_x,
+            landing_x,
             landing_y,
             spec.stair_w,
             spec.step_depth,
             floor_tex=start_room.floor_tex,
             wall_tex=start_room.wall_tex,
             ceil_tex=start_room.ceil_tex,
-            floor_height=int(floor_height + spec.steps * spec.rise),
+            floor_height=landing_floor,
             ceil_height=ceil_height,
         )
     )
 
+    base_floor = int(max(int(getattr(prev_room, 'floor_height', 0)), int(getattr(landing, 'floor_height', 0))))
+    opening_h = int(max(1, int(ceil_height) - base_floor))
     level.add_connector(
         Window(
-            start_x,
-            current_y,
-            spec.stair_w,
-            spec.wall_thickness,
+            landing_connector_x,
+            landing_connector_y,
+            landing_connector_w,
+            landing_connector_h,
             prev_room,
             landing,
             sill_height=0,
-            window_height=ceil_height,
+            window_height=opening_h,
             floor_tex=start_room.floor_tex,
             ceil_tex=start_room.ceil_tex,
             wall_tex=start_room.wall_tex,
         )
     )
 
-    threshold_y = landing_y + spec.step_depth + spec.wall_thickness
+    # Portal threshold beyond the final landing.
+    if direction == "north":
+        portal_x = int(landing_x)
+        portal_y = int(landing_y + spec.step_depth)
+        threshold_x = int(landing_x)
+        threshold_y = int(portal_y + spec.wall_thickness)
+    elif direction == "south":
+        portal_x = int(landing_x)
+        # Place the portal strip *below* the landing so its top edge matches the
+        # landing bottom edge (required for exact-edge cut registration).
+        portal_y = int(landing_y - spec.wall_thickness)
+        threshold_x = int(landing_x)
+        # Threshold must touch the portal strip (threshold top == portal bottom).
+        threshold_y = int(portal_y - spec.step_depth)
+    elif direction == "east":
+        portal_x = int(landing_x + spec.stair_w)
+        portal_y = int(landing_y)
+        threshold_x = int(portal_x + spec.wall_thickness)
+        threshold_y = int(landing_y)
+    else:  # west
+        # Place the portal strip *left* of the landing so its right edge matches
+        # the landing left edge.
+        portal_x = int(landing_x - spec.wall_thickness)
+        portal_y = int(landing_y)
+        # Threshold must touch the portal strip (threshold right == portal left).
+        threshold_x = int(portal_x - spec.stair_w)
+        threshold_y = int(landing_y)
+
     threshold = level.add_room(
         Room(
-            start_x,
+            threshold_x,
             threshold_y,
             spec.stair_w,
             spec.step_depth,
             floor_tex=start_room.floor_tex,
             wall_tex=start_room.wall_tex,
             ceil_tex=start_room.ceil_tex,
-            floor_height=int(floor_height + spec.steps * spec.rise),
+            floor_height=landing_floor,
             ceil_height=ceil_height,
         )
     )
 
     level.add_connector(
         Portal(
-            start_x,
-            landing_y + spec.step_depth,
-            spec.stair_w,
-            spec.wall_thickness,
+            portal_x,
+            portal_y,
+            spec.wall_thickness if direction in ("east", "west") else spec.stair_w,
+            spec.wall_thickness if direction in ("north", "south") else spec.step_depth,
             landing,
             threshold,
             source_line_id=int(portal_pair_ids[0]),

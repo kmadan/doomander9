@@ -324,7 +324,6 @@ class WadBuilder:
                     ld.arg3 = int(spec['planeanchor'])
                     ld.arg4 = 0
                     matched = True
-                    break
             if not matched:
                 raise RuntimeError(f"UDMF postprocess failed: could not find portal linedef id={source_line_id}")
 

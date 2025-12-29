@@ -20,8 +20,24 @@ class Room(Element):
         self.furniture = []
         
     def add_cut(self, side, offset):
-        if offset not in self.cuts[side]:
-            self.cuts[side].append(offset)
+        try:
+            off = int(offset)
+        except Exception:
+            off = offset
+
+        # Cuts at the exact endpoints (0 or full span) are redundant because the
+        # corner vertices already exist. Keeping them can introduce zero-length
+        # edges / duplicate points, which in turn can prevent connectors (notably
+        # portals) from becoming properly two-sided.
+        if side in ('left', 'right'):
+            if off <= 0 or off >= int(self.height):
+                return
+        elif side in ('top', 'bottom'):
+            if off <= 0 or off >= int(self.width):
+                return
+
+        if off not in self.cuts[side]:
+            self.cuts[side].append(off)
             
     def add_furniture(self, item):
         # Adjust item coordinates to be absolute if they are relative?

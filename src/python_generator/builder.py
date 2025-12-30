@@ -18,6 +18,11 @@ class WadBuilder:
         # Create a new map (MAP01)
         self.editor = MapEditor()
 
+        # Record imported image sizes so we can apply UDMF sidedef texture scaling
+        # (e.g. to fit large PNG/JPEG signs onto short wall spans).
+        # Map: texture name -> (width_px, height_px)
+        self._imported_texture_dims: dict[str, tuple[int, int]] = {}
+
         # Post-processing steps applied after converting the classic Doom-format map
         # to UDMF (TEXTMAP). Each entry is a dict with:
         #   control_line_id: unique line id to locate after conversion
@@ -199,6 +204,22 @@ class WadBuilder:
         try:
             with open(file_path, 'rb') as f:
                 data = f.read()
+
+            dims = self._try_parse_image_dims(data)
+            if dims is not None:
+                self._imported_texture_dims[str(name).upper()] = (int(dims[0]), int(dims[1]))
+            else:
+                # Still import the raw bytes; ZDoom can generally handle various image formats
+                # inside the TX namespace, but we won't be able to auto-scale it.
+                pass
+
+            # Friendly warning if a file extension is misleading (common when iterating on assets).
+            if str(file_path).lower().endswith('.png') and not data.startswith(b'\x89PNG\r\n\x1a\n'):
+                if data.startswith(b'\xff\xd8\xff'):
+                    print(f"Warning: {file_path} is a JPEG file named .png; consider renaming for clarity")
+                else:
+                    print(f"Warning: {file_path} is not a PNG file")
+
             # Add to ztextures (TX_START/TX_END)
             # The key should be the texture name (up to 8 chars)
             # We use Graphic class to wrap the data
@@ -206,6 +227,77 @@ class WadBuilder:
             print(f"Imported texture {name} from {file_path}")
         except Exception as e:
             print(f"Failed to import texture {name}: {e}")
+
+    @staticmethod
+    def _try_parse_image_dims(data: bytes) -> tuple[int, int] | None:
+        """Best-effort width/height detection for PNG and baseline/progressive JPEG.
+
+        Returns (width_px, height_px) or None if unknown.
+        """
+        if not data:
+            return None
+
+        # PNG: signature + IHDR chunk.
+        if data.startswith(b'\x89PNG\r\n\x1a\n') and len(data) >= 24:
+            # IHDR is always the first chunk.
+            if data[12:16] != b'IHDR':
+                return None
+            try:
+                import struct
+
+                w, h = struct.unpack('>II', data[16:24])
+                if w > 0 and h > 0:
+                    return int(w), int(h)
+            except Exception:
+                return None
+
+        # JPEG: scan markers for SOFn.
+        if data.startswith(b'\xff\xd8'):
+            try:
+                import struct
+
+                i = 2
+                n = len(data)
+                while i < n:
+                    if data[i] != 0xFF:
+                        i += 1
+                        continue
+                    # Skip fill bytes.
+                    while i < n and data[i] == 0xFF:
+                        i += 1
+                    if i >= n:
+                        break
+                    marker = data[i]
+                    i += 1
+
+                    # Standalone markers.
+                    if marker in (0xD8, 0xD9):
+                        continue
+                    # Start of Scan: image data follows; stop scanning.
+                    if marker == 0xDA:
+                        break
+
+                    if i + 2 > n:
+                        break
+                    seglen = struct.unpack('>H', data[i:i+2])[0]
+                    if seglen < 2:
+                        break
+
+                    # SOF0..SOF3, SOF5..SOF7, SOF9..SOF11, SOF13..SOF15
+                    if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                        if i + 2 + 5 <= n:
+                            # data[i:i+2] is seglen; payload starts at i+2.
+                            # payload: precision(1), height(2), width(2), ...
+                            height = struct.unpack('>H', data[i+3:i+5])[0]
+                            width = struct.unpack('>H', data[i+5:i+7])[0]
+                            if width > 0 and height > 0:
+                                return int(width), int(height)
+
+                    i += seglen
+            except Exception:
+                return None
+
+        return None
 
     def save(self, filename):
         # Ensure our outdoor lawn flat exists even if the user's IWAD doesn't ship with it.
@@ -217,6 +309,37 @@ class WadBuilder:
 
         # Convert to UDMF so we can use Hexen-style specials w/ args (e.g. Sector_Set3dFloor)
         umap = UMapEditor(classic_lumps, namespace="ZDoom")
+
+        # --- UDMF postprocess: scale midtextures for wall signs ---
+        # Our sign wall segments are intentionally short (256 units). The source images
+        # can be much larger in pixels, so without UDMF scaling only a corner is visible.
+        sign_fit = {
+            'PLUTOGEM': (256, 128),
+        }
+        for sd in umap.sidedefs:
+            tex = getattr(sd, 'texturemiddle', None)
+            if not tex or tex == '-':
+                continue
+            tex = str(tex).upper()
+            if tex not in sign_fit:
+                continue
+            dims = self._imported_texture_dims.get(tex)
+            if not dims:
+                continue
+            tw, th = dims
+            dw, dh = sign_fit[tex]
+            # In ZDoom UDMF, `scalex_mid`/`scaley_mid` are texture scale factors.
+            # We use ratios so that one full image fits within the desired world span.
+            if tw > 0 and th > 0 and dw > 0 and dh > 0:
+                scale_x = float(tw) / float(dw)
+                scale_y = float(th) / float(dh)
+                # Uniform scale keeps the image aspect ratio intact. Use the larger
+                # scale so both dimensions fit inside the target box.
+                scale = max(scale_x, scale_y)
+                sd.scalex_mid = float(scale)
+                sd.scaley_mid = float(scale)
+            # Prevent the midtexture from bleeding past floor/ceiling planes.
+            sd.clipmidtex = True
 
         # Translate legacy Doom-format line types used by this generator into
         # UDMF/ZDoom action specials.

@@ -401,6 +401,106 @@ class Window(Connector):
                 pass
 
 
+class WallSign(Connector):
+    """Apply a wall texture as a sign on an existing one-sided wall segment.
+
+    This connector does not create any new sectors. It simply:
+    - Registers cuts on the target room edge so the wall segment gets split to
+      exactly the sign width.
+    - During build, finds the resulting one-sided linedefs on that edge and sets
+      the mid texture (and offsets) to the sign texture.
+    """
+
+    def __init__(
+        self,
+        *,
+        room: 'Room',
+        side: str,
+        offset: int,
+        span: int,
+        texture: str,
+        off_x: int = 0,
+        off_y: int = -64,
+        lower_unpeg: bool = True,
+    ) -> None:
+        super().__init__(int(room.x), int(room.y), 0, 0, room, None)
+        self.room = room
+        self.side = str(side)
+        self.offset = int(offset)
+        self.span = int(span)
+        self.texture = str(texture)
+        self.off_x = int(off_x)
+        self.off_y = int(off_y)
+        self.lower_unpeg = bool(lower_unpeg)
+
+    def register_cuts(self) -> None:
+        r = self.room
+        if r is None:
+            return
+
+        o0 = int(self.offset)
+        o1 = int(self.offset + self.span)
+        if self.side not in ('top', 'bottom', 'left', 'right'):
+            return
+
+        r.add_cut(self.side, o0)
+        r.add_cut(self.side, o1)
+
+    def build(self, builder) -> None:
+        r = self.room
+        if r is None:
+            return
+
+        # Compute world-space sign segment bounds for matching linedefs.
+        if self.side in ('top', 'bottom'):
+            y_edge = int(r.y + r.height) if self.side == 'top' else int(r.y)
+            x0 = int(r.x + self.offset)
+            x1 = int(r.x + self.offset + self.span)
+            is_h = True
+        else:
+            x_edge = int(r.x + r.width) if self.side == 'right' else int(r.x)
+            y0 = int(r.y + self.offset)
+            y1 = int(r.y + self.offset + self.span)
+            is_h = False
+
+        def _v_xy(v):
+            return int(getattr(v, 'x', 0)), int(getattr(v, 'y', 0))
+
+        def _overlap_1d(a0: int, a1: int, b0: int, b1: int) -> bool:
+            return max(min(a0, a1), min(b0, b1)) < min(max(a0, a1), max(b0, b1))
+
+        for ld in builder.editor.linedefs:
+            v1 = builder.editor.vertexes[ld.vx_a]
+            v2 = builder.editor.vertexes[ld.vx_b]
+            (x_a, y_a) = _v_xy(v1)
+            (x_b, y_b) = _v_xy(v2)
+
+            if is_h:
+                if y_a != y_edge or y_b != y_edge:
+                    continue
+                if not _overlap_1d(x_a, x_b, x0, x1):
+                    continue
+            else:
+                if x_a != x_edge or x_b != x_edge:
+                    continue
+                if not _overlap_1d(y_a, y_b, y0, y1):
+                    continue
+
+            # Apply the texture to the wall segment.
+            sd_front = builder.editor.sidedefs[ld.front]
+            sd_front.tx_mid = self.texture
+            sd_front.off_x = int(self.off_x)
+            sd_front.off_y = int(self.off_y)
+
+            if ld.back != 0xFFFF:
+                sd_back = builder.editor.sidedefs[ld.back]
+                sd_back.tx_mid = self.texture
+                sd_back.off_x = int(self.off_x)
+                sd_back.off_y = int(self.off_y)
+            if self.lower_unpeg:
+                ld.lower_unpeg = True
+
+
 
 class Portal(Connector):
     def __init__(

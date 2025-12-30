@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 
 from modules.level import Level
 from modules.geometry import Corridor, Lawn, Room
-from modules.connectors import Door, Switch, Window
+from modules.connectors import Door, Switch, Window, WallSign
 from modules.furniture import Furniture
 
 
@@ -535,7 +535,7 @@ def build_south_gates_and_outside(
             None,
             sill_height=0,
             window_height=128,
-            wall_tex="PLUTOSGN",
+            wall_tex="PLUTOGEM",
             floor_tex="PYGRASS",
             ceil_tex="F_SKY1",
         )
@@ -589,6 +589,7 @@ def build_south_gates_and_outside_with_roads(
     campus_wall_tex: str = "STONE2",
     outside_light: int = 0,
     gate_light: int = 224,
+    gate_apron_lit_h: int = 96,
 ) -> GateAndOutsideResult:
     """Build outside campus as grass+road strips and connect the gates to the road strips.
 
@@ -606,82 +607,51 @@ def build_south_gates_and_outside_with_roads(
     grass_center_w = int(grass_center_w)
 
     # Outside strips (same x layout as the lawn).
-    out_grass_west = level.add_room(
-        Lawn(
-            x0,
-            outside_y,
-            grass_edge_w,
-            int(outside_height),
-            floor_tex=str(grass_tex),
-            wall_tex=str(campus_wall_tex),
-            light=int(outside_light),
-        )
-    )
+    # Split into a dark band + a small lit band near the gate wall,
+    # so the entry signage is visible without lighting the whole campus.
+    apron_h = int(outside_height)
+    lit_h = int(max(16, min(int(gate_apron_lit_h), max(16, apron_h - 16))))
+    dark_h = int(apron_h - lit_h)
+    lit_y = int(outside_y + dark_h)
+
     out_road_west_x = int(x0 + grass_edge_w + wt)
-    out_road_west = level.add_room(
-        Lawn(
-            out_road_west_x,
-            outside_y,
-            road_w,
-            int(outside_height),
-            floor_tex=str(road_tex),
-            wall_tex=str(campus_wall_tex),
-            light=int(outside_light),
-        )
-    )
-
     out_grass_center_x = int(out_road_west_x + road_w + wt)
-    out_grass_center = level.add_room(
-        Lawn(
-            out_grass_center_x,
-            outside_y,
-            grass_center_w,
-            int(outside_height),
-            floor_tex=str(grass_tex),
-            wall_tex=str(campus_wall_tex),
-            light=int(outside_light),
-        )
-    )
-
     out_road_east_x = int(out_grass_center_x + grass_center_w + wt)
-    out_road_east = level.add_room(
-        Lawn(
-            out_road_east_x,
-            outside_y,
-            road_w,
-            int(outside_height),
-            floor_tex=str(road_tex),
-            wall_tex=str(campus_wall_tex),
-            light=int(outside_light),
-        )
-    )
-
     out_grass_east_x = int(out_road_east_x + road_w + wt)
-    out_grass_east = level.add_room(
-        Lawn(
-            out_grass_east_x,
-            outside_y,
-            grass_edge_w,
-            int(outside_height),
-            floor_tex=str(grass_tex),
-            wall_tex=str(campus_wall_tex),
-            light=int(outside_light),
-        )
-    )
 
-    # Open outside gaps so it stays walkable.
-    for left_room, right_room, conn_x in (
-        (out_grass_west, out_road_west, int(x0 + grass_edge_w)),
-        (out_road_west, out_grass_center, int(out_road_west_x + road_w)),
-        (out_grass_center, out_road_east, int(out_grass_center_x + grass_center_w)),
-        (out_road_east, out_grass_east, int(out_road_east_x + road_w)),
+    # South (dark) band
+    out_grass_west_s = level.add_room(Lawn(x0, outside_y, grass_edge_w, dark_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+    out_road_west_s = level.add_room(Lawn(out_road_west_x, outside_y, road_w, dark_h, floor_tex=str(road_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+    out_grass_center_s = level.add_room(Lawn(out_grass_center_x, outside_y, grass_center_w, dark_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+    out_road_east_s = level.add_room(Lawn(out_road_east_x, outside_y, road_w, dark_h, floor_tex=str(road_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+    out_grass_east_s = level.add_room(Lawn(out_grass_east_x, outside_y, grass_edge_w, dark_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+
+    # North (lit) band: center grass and the road lanes.
+    out_grass_west_n = level.add_room(Lawn(x0, lit_y, grass_edge_w, lit_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+    out_road_west_n = level.add_room(Lawn(out_road_west_x, lit_y, road_w, lit_h, floor_tex=str(road_tex), wall_tex=str(campus_wall_tex), light=int(gate_light)))
+    out_grass_center_n = level.add_room(Lawn(out_grass_center_x, lit_y, grass_center_w, lit_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(gate_light)))
+    out_road_east_n = level.add_room(Lawn(out_road_east_x, lit_y, road_w, lit_h, floor_tex=str(road_tex), wall_tex=str(campus_wall_tex), light=int(gate_light)))
+    out_grass_east_n = level.add_room(Lawn(out_grass_east_x, lit_y, grass_edge_w, lit_h, floor_tex=str(grass_tex), wall_tex=str(campus_wall_tex), light=int(outside_light)))
+
+    # Open outside gaps so it stays walkable (dark + lit bands).
+    for y_band, h_band, left_room, right_room, conn_x in (
+        (int(outside_y), int(dark_h), out_grass_west_s, out_road_west_s, int(x0 + grass_edge_w)),
+        (int(outside_y), int(dark_h), out_road_west_s, out_grass_center_s, int(out_road_west_x + road_w)),
+        (int(outside_y), int(dark_h), out_grass_center_s, out_road_east_s, int(out_grass_center_x + grass_center_w)),
+        (int(outside_y), int(dark_h), out_road_east_s, out_grass_east_s, int(out_road_east_x + road_w)),
+        (int(lit_y), int(lit_h), out_grass_west_n, out_road_west_n, int(x0 + grass_edge_w)),
+        (int(lit_y), int(lit_h), out_road_west_n, out_grass_center_n, int(out_road_west_x + road_w)),
+        (int(lit_y), int(lit_h), out_grass_center_n, out_road_east_n, int(out_grass_center_x + grass_center_w)),
+        (int(lit_y), int(lit_h), out_road_east_n, out_grass_east_n, int(out_road_east_x + road_w)),
     ):
+        if h_band <= 0:
+            continue
         level.add_connector(
             Window(
                 int(conn_x),
-                int(outside_y),
+                int(y_band),
                 int(wt),
-                int(outside_height),
+                int(h_band),
                 left_room,
                 right_room,
                 sill_height=0,
@@ -702,7 +672,7 @@ def build_south_gates_and_outside_with_roads(
             int(y0) - wt,
             gate_width,
             int(wt),
-            out_road_west,
+            out_road_west_n,
             inside_road_west,
             texture="BIGDOOR2",
             state="open",
@@ -714,7 +684,7 @@ def build_south_gates_and_outside_with_roads(
 
     switch1_x = int(gate1_x) - 32
     switch1_y = int(y0) - wt
-    level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag, room=out_road_west, room2=inside_road_west))
+    level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag, room=out_road_west_n, room2=inside_road_west))
 
     gate2_tag = level.get_new_tag()
     gate2_x = int(out_road_east_x)
@@ -724,7 +694,7 @@ def build_south_gates_and_outside_with_roads(
             int(y0) - wt,
             gate_width,
             int(wt),
-            out_road_east,
+            out_road_east_n,
             inside_road_east,
             texture="BIGDOOR2",
             state="open",
@@ -739,36 +709,59 @@ def build_south_gates_and_outside_with_roads(
     # Use a real torch decoration (omgifol thinginfo: red torch = 46).
     torch_type = 46
     torch_y = int(y0) - wt - 48
-    out_road_west.add_furniture(Furniture(int(gate1_x) + 16, int(torch_y), torch_type))
-    out_road_west.add_furniture(Furniture(int(gate1_x) + int(gate_width) - 16, int(torch_y), torch_type))
-    out_road_east.add_furniture(Furniture(int(gate2_x) + 16, int(torch_y), torch_type))
-    out_road_east.add_furniture(Furniture(int(gate2_x) + int(gate_width) - 16, int(torch_y), torch_type))
+    out_road_west_n.add_furniture(Furniture(int(gate1_x) + 16, int(torch_y), torch_type))
+    out_road_west_n.add_furniture(Furniture(int(gate1_x) + int(gate_width) - 16, int(torch_y), torch_type))
+    out_road_east_n.add_furniture(Furniture(int(gate2_x) + 16, int(torch_y), torch_type))
+    out_road_east_n.add_furniture(Furniture(int(gate2_x) + int(gate_width) - 16, int(torch_y), torch_type))
 
     switch2_x = int(gate2_x) + gate_width + 16
     switch2_y = int(y0) - wt
-    level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag, room=out_road_east, room2=inside_road_east))
+    level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag, room=out_road_east_n, room2=inside_road_east))
 
-    # Sign alcove texture strip on the south boundary.
-    # Keep it fully inside the center grass strip so it doesn't land exactly
-    # on a strip boundary (endpoint cuts are intentionally ignored).
-    sign_width = 128
-    sign_x = int(out_grass_center_x + (grass_center_w - sign_width) // 2)
-    level.add_connector(
-        Window(
-            sign_x,
-            int(y0) - 8,
-            sign_width,
-            8,
-            sign_target,
-            None,
-            sill_height=0,
-            window_height=128,
-            wall_tex="PLUTOSGN",
+    # --- Wall signs between the gates (outside) ---
+    # Place the sign as a true 2-sided midtexture so it does not tile like a
+    # normal one-sided wall texture.
+    #
+    # We do this by adding a thin "backer" sector in the wall-thickness gap
+    # (y0-wt .. y0) directly behind the sign. This makes the sign edge a 2-sided
+    # linedef, and ZDoom can clip the midtexture span to the backer's ceiling.
+    sign_w = 256
+    total_w = int(sign_w)
+    start_x_sign = int(out_grass_center_x + (grass_center_w - total_w) // 2)
+    # Ensure they're well inside the wall (avoid endpoint cuts).
+    start_x_sign = max(int(out_grass_center_x + 16), start_x_sign)
+    start_x_sign = min(int(out_grass_center_x + grass_center_w - total_w - 16), start_x_sign)
+
+    sign_backer = level.add_room(
+        Lawn(
+            int(start_x_sign),
+            int(y0) - wt,
+            int(sign_w),
+            int(wt),
             floor_tex=str(grass_tex),
-            ceil_tex="F_SKY1",
-            light=int(outside_light),
+            wall_tex=str(campus_wall_tex),
+            light=int(gate_light),
         )
     )
+    sign_backer.ceil_height = 128
+    sign_backer.ceil_tex = "F_SKY1"
+
+    # Top edge of the outside center strip is the wall line at y = start_y - wall_thickness.
+    # For Room edge cuts, offsets are relative to room.x.
+    level.add_connector(
+        WallSign(
+            room=out_grass_center_n,
+            side='top',
+            offset=int(start_x_sign - out_grass_center_x),
+            span=int(sign_w),
+            texture='PLUTOGEM',
+            off_x=0,
+            off_y=-64,
+        )
+    )
+
+
+    # (Old sign-strip sector removed; wall signs above are more robust.)
 
     # --- Campus approach (large open area south of the apron) ---
     campus_height = int(campus_height)
@@ -853,13 +846,13 @@ def build_south_gates_and_outside_with_roads(
             )
         )
 
-    # Connect the gate apron strips to the campus approach strips.
+    # Connect the gate apron strips (dark band) to the campus approach strips.
     for north_room, south_room, span_x, span_w in (
-        (out_grass_west, campus_grass_west, int(x0), int(grass_edge_w)),
-        (out_road_west, campus_road_west, int(out_road_west_x), int(road_w)),
-        (out_grass_center, campus_grass_center, int(out_grass_center_x), int(grass_center_w)),
-        (out_road_east, campus_road_east, int(out_road_east_x), int(road_w)),
-        (out_grass_east, campus_grass_east, int(out_grass_east_x), int(grass_edge_w)),
+        (out_grass_west_s, campus_grass_west, int(x0), int(grass_edge_w)),
+        (out_road_west_s, campus_road_west, int(out_road_west_x), int(road_w)),
+        (out_grass_center_s, campus_grass_center, int(out_grass_center_x), int(grass_center_w)),
+        (out_road_east_s, campus_road_east, int(out_road_east_x), int(road_w)),
+        (out_grass_east_s, campus_grass_east, int(out_grass_east_x), int(grass_edge_w)),
     ):
         level.add_connector(
             Window(
@@ -882,4 +875,4 @@ def build_south_gates_and_outside_with_roads(
     spawn_y = int(campus_road_west.y + min(384, max(128, int(campus_height) // 3)))
     spawn_angle = 90
 
-    return GateAndOutsideResult(outside=out_grass_center, spawn=(spawn_x, spawn_y, spawn_angle))
+    return GateAndOutsideResult(outside=out_grass_center_s, spawn=(spawn_x, spawn_y, spawn_angle))

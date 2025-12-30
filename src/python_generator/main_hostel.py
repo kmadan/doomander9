@@ -49,6 +49,38 @@ def main():
                 flags=0,
             )
 
+    # --- Facade windows: carve per-floor gaps (avoid one continuous slit) ---
+    # Window sectors that bridge from the story-tagged footprint to outdoor sky
+    # are tagged with a dedicated sector tag (allocated by Window.build).
+    # We fill most of each 128-high story with solid 3D floors, leaving a single
+    # 48-unit tall gap per story: [48..96] within each story.
+    facade_window_tag = int(builder.get_facade_window_sector_tag())
+    if facade_window_tag:
+        story_zs = (0, 128, 256)
+        for z0 in story_zs:
+            # Fill below the window gap.
+            builder.add_3d_floor_platform(
+                target_sector_tag=facade_window_tag,
+                z=int(z0),
+                thickness=48,
+                floor_tex="FLOOR4_8",
+                ceil_tex="CEIL3_5",
+                wall_tex="BROWN96",
+                alpha=255,
+                flags=0,
+            )
+            # Fill above the window gap.
+            builder.add_3d_floor_platform(
+                target_sector_tag=facade_window_tag,
+                z=int(z0 + 96),
+                thickness=32,
+                floor_tex="FLOOR4_8",
+                ceil_tex="CEIL3_5",
+                wall_tex="BROWN96",
+                alpha=255,
+                flags=0,
+            )
+
     # Second floor is now implemented as a disconnected/off-map area connected
     # via line portals (so doors can be independent per floor).
     

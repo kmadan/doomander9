@@ -226,22 +226,13 @@ class Wing:
                 if self.side == 'right':
                     wx -= self.wall_thickness
 
-                # Vertical opening.
-                sill_h = 32
+                # Vertical opening (Z): keep consistent per-floor.
+                # IMPORTANT: stretching facade windows to span multiple stories
+                # reads as one continuous slit (your screenshot). Keep it to a
+                # normal window height and rely on real per-floor windows in the
+                # actual floor copies if needed.
+                sill_h = 48
                 win_h = 48
-                if story_tag and int(floor_height) == 0:
-                    # Facade: must be tall enough to see the 3rd-floor 3D floor
-                    # (platform at z=256 with thickness 16) from outside.
-                    # Also keep a lintel so the opening doesn't run into the ceiling.
-                    lintel_h = 64
-                    # Minimum top to reveal 3rd-floor platform.
-                    required_top = 256 + 16
-                    max_top = int(ceil_height) - lintel_h
-                    # Keep the window a bit lower (not starting at ceiling).
-                    sill_h = 48
-                    desired_top = max(required_top, int(floor_height) + int(sill_h) + 96)
-                    top = min(max_top, max(desired_top, int(floor_height) + int(sill_h) + 64))
-                    win_h = int(max(64, top - (int(floor_height) + int(sill_h))))
                 level.add_connector(Window(
                     wx,
                     wy0,
@@ -297,24 +288,14 @@ class Wing:
         bias_amt = 32
         window_offset_y = int(center_off + int(max(-1, min(1, int(window_bias)))) * bias_amt)
         window_offset_y = int(max(0, min(window_offset_y, self.room_height - window_segment)))
-        window_height = 24  # was 48
+        # Vertical opening height (Z). Keep consistent across actual floors.
+        window_height = 48
 
         # Facade pass: on the ground-floor footprint, keep the *same 2D window span*
         # (so cuts register cleanly), and make the opening tall enough to reveal
         # the 3D-floor stories from outside, but keep a sill + lintel so the wall
         # doesn't look completely missing/transparent.
-        if story_tag and int(floor_height) == 0:
-            # Facade pass: ensure openings reveal the 3rd-floor 3D floor (z=256..272)
-            # from outside, but keep a lintel so it doesn't hit the ceiling.
-            lintel_h = 64
-            required_top = 256 + 16
-            window_sill = 48
-            max_top = int(ceil_height) - int(lintel_h)
-            desired_top = max(required_top, int(floor_height) + int(window_sill) + 96)
-            top = min(max_top, desired_top)
-            window_height = int(max(64, top - (int(floor_height) + int(window_sill))))
-        else:
-            window_sill = 48
+        window_sill = 48
 
         if (not self.corridor_on_lawn_side) and (lawn is not None):
             if door_side == 'right':

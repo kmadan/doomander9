@@ -47,6 +47,12 @@ class WadBuilder:
         # tags for actions, but still want them to have the second-story 3D floor.
         self._udmf_extra_3dfloor_target_tags: set[int] = set()
 
+        # Shared tag applied to facade window sectors (the thin sectors created by
+        # `Window` connectors between the main-floor story-tagged footprint and
+        # outdoor sky sectors). This lets us target just facade window sectors
+        # with 3D-floor "filler" bands to create per-floor window gaps.
+        self._udmf_facade_window_sector_tag: int = 0
+
         # Unique sector tags allocated during build (avoid clashing with Level tags).
         self._next_sector_tag: int = 1000
 
@@ -64,6 +70,15 @@ class WadBuilder:
 
     def get_extra_3d_floor_target_tags(self) -> set[int]:
         return set(self._udmf_extra_3dfloor_target_tags)
+
+    def alloc_facade_window_sector_tag(self) -> int:
+        """Allocate (once) a sector tag used exclusively by facade window sectors."""
+        if not self._udmf_facade_window_sector_tag:
+            self._udmf_facade_window_sector_tag = int(self.alloc_sector_tag())
+        return int(self._udmf_facade_window_sector_tag)
+
+    def get_facade_window_sector_tag(self) -> int:
+        return int(self._udmf_facade_window_sector_tag)
 
     def register_teleport_destination(self, *, x: int, y: int, tid: int):
         self._udmf_teleport_dest_specs.append({

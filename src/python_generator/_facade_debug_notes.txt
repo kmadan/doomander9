@@ -1,0 +1,3 @@
+(temporary)
+Facade windows plan: full-height window sectors + 3D-floor filler bands.
+If you see this file, feel free to delete.

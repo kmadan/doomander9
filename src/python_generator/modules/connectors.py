@@ -367,22 +367,52 @@ class Window(Connector):
         window_tag = 0
         t1 = getattr(self.room1, 'tag', 0) if self.room1 is not None else 0
         t2 = getattr(self.room2, 'tag', 0) if self.room2 is not None else 0
-        if t1 and t1 == t2:
+        c1 = getattr(self.room1, 'ceil_tex', None) if self.room1 is not None else None
+        c2 = getattr(self.room2, 'ceil_tex', None) if self.room2 is not None else None
+
+        # Facade windows (main-floor story-tagged footprint -> outdoor sky) are
+        # special: we want *three* distinct window gaps (one per story) without
+        # creating a single continuous vertical slit.
+        #
+        # Technique:
+        # 1) Make the window sector full-height (0..story ceil), so it can
+        #    potentially show upper floors.
+        # 2) Give facade window sectors a dedicated tag, and later apply 3D-floor
+        #    "filler" bands to that tag to leave three small gaps.
+        facade_story_tag = 200
+        is_facade = False
+        tagged_room = None
+        if t1 == facade_story_tag and str(c2).upper() == 'F_SKY1':
+            is_facade = True
+            tagged_room = self.room1
+        elif t2 == facade_story_tag and str(c1).upper() == 'F_SKY1':
+            is_facade = True
+            tagged_room = self.room2
+        if is_facade:
+            window_tag = int(builder.alloc_facade_window_sector_tag())
+        elif t1 and t1 == t2:
             window_tag = int(t1)
         else:
-            c1 = getattr(self.room1, 'ceil_tex', None) if self.room1 is not None else None
-            c2 = getattr(self.room2, 'ceil_tex', None) if self.room2 is not None else None
             if t1 and not t2 and str(c2).upper() == 'F_SKY1':
                 window_tag = int(t1)
             elif t2 and not t1 and str(c1).upper() == 'F_SKY1':
                 window_tag = int(t2)
 
+        # Determine window sector vertical span.
+        # For facade windows: full-height to allow multi-story visibility.
+        if is_facade and tagged_room is not None:
+            win_floor = int(getattr(tagged_room, 'floor_height', 0) or 0)
+            win_ceil = int(getattr(tagged_room, 'ceil_height', 384) or 384)
+        else:
+            win_floor = int(base_floor + self.sill_height)
+            win_ceil = int(base_floor + self.sill_height + self.window_height)
+
         builder.draw_polygon(points, 
                              floor_tex=self.floor_tex, 
                              ceil_tex=self.ceil_tex, 
                              wall_tex=self.wall_tex, # Side walls (jambs)
-                             floor_height=base_floor + self.sill_height, 
-                             ceil_height=base_floor + self.sill_height + self.window_height,
+                             floor_height=int(win_floor),
+                             ceil_height=int(win_ceil),
                              light=(int(self.light) if self.light is not None else 160),
                              tag=window_tag)
                              
@@ -400,6 +430,15 @@ class Window(Connector):
                 # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
                 builder.editor.sidedefs[ld.front].tx_mid = "-"
                 builder.editor.sidedefs[ld.back].tx_mid = "-"
+
+                # Critical: ensure the wall above/below the window opening is
+                # rendered using upper/lower textures. Without this, the entire
+                # span between sectors can appear as a full-height void (notably
+                # in facade + 3D-floor tagged sectors).
+                builder.editor.sidedefs[ld.front].tx_low = self.wall_tex
+                builder.editor.sidedefs[ld.front].tx_up = self.wall_tex
+                builder.editor.sidedefs[ld.back].tx_low = self.wall_tex
+                builder.editor.sidedefs[ld.back].tx_up = self.wall_tex
                 is_window_face = True
                 
             # Case 2: Back is Window, Front is Room.
@@ -407,6 +446,13 @@ class Window(Connector):
                 # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
                 builder.editor.sidedefs[ld.front].tx_mid = "-"
                 builder.editor.sidedefs[ld.back].tx_mid = "-"
+
+                # Ensure upper/lower textures exist so only the intended window
+                # span is open.
+                builder.editor.sidedefs[ld.front].tx_low = self.wall_tex
+                builder.editor.sidedefs[ld.front].tx_up = self.wall_tex
+                builder.editor.sidedefs[ld.back].tx_low = self.wall_tex
+                builder.editor.sidedefs[ld.back].tx_up = self.wall_tex
                 is_window_face = True
                 
             if is_window_face:

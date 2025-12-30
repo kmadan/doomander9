@@ -44,6 +44,16 @@ class GateAndOutsideResult:
 
 
 @dataclass(frozen=True)
+class CentralLawnRoadsResult:
+    # West-to-east strips inside the central lawn footprint.
+    grass_west: Room
+    road_west: Room
+    grass_center: Room
+    road_east: Room
+    grass_east: Room
+
+
+@dataclass(frozen=True)
 class BrownWestHalfResult:
     west_default: Room
     west_south: Optional[Room]
@@ -117,6 +127,86 @@ def compute_stair_attach_and_reserved_span(
 
 def build_central_lawn(level: Level, *, x: int, y: int, width: int, height: int, floor_tex: str = "PYGRASS") -> Room:
     return level.add_room(Lawn(int(x), int(y), int(width), int(height), floor_tex=str(floor_tex)))
+
+
+def build_central_lawn_with_roads(
+    level: Level,
+    *,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    wall_thickness: int,
+    grass_tex: str = "PYGRASS",
+    road_tex: str = "FLOOR0_1",
+    grass_edge_w: int = 96,
+    road_w: int = 128,
+    grass_center_w: int = 384,
+    connect_window_height: int = 128,
+) -> CentralLawnRoadsResult:
+    """Build the central lawn footprint as grass + 2 road strips.
+
+    Strips are separated by wall-thickness gaps which are opened by Window connectors,
+    so the whole lawn remains navigable while allowing different floor textures.
+    """
+
+    wt = int(wall_thickness)
+    x0 = int(x)
+    y0 = int(y)
+    w = int(width)
+    h = int(height)
+
+    grass_edge_w = int(grass_edge_w)
+    road_w = int(road_w)
+    grass_center_w = int(grass_center_w)
+
+    expected = int(grass_edge_w + wt + road_w + wt + grass_center_w + wt + road_w + wt + grass_edge_w)
+    if expected != w:
+        raise RuntimeError(f"Central lawn roads width mismatch: expected {expected}, got {w}")
+
+    grass_west = level.add_room(Lawn(x0, y0, grass_edge_w, h, floor_tex=str(grass_tex)))
+    road_west_x = int(x0 + grass_edge_w + wt)
+    road_west = level.add_room(Lawn(road_west_x, y0, road_w, h, floor_tex=str(road_tex)))
+
+    grass_center_x = int(road_west_x + road_w + wt)
+    grass_center = level.add_room(Lawn(grass_center_x, y0, grass_center_w, h, floor_tex=str(grass_tex)))
+
+    road_east_x = int(grass_center_x + grass_center_w + wt)
+    road_east = level.add_room(Lawn(road_east_x, y0, road_w, h, floor_tex=str(road_tex)))
+
+    grass_east_x = int(road_east_x + road_w + wt)
+    grass_east = level.add_room(Lawn(grass_east_x, y0, grass_edge_w, h, floor_tex=str(grass_tex)))
+
+    # Open the wall-thickness gaps so the lawn is a single walkable space.
+    opening_h = int(connect_window_height)
+    for left_room, right_room, conn_x in (
+        (grass_west, road_west, int(x0 + grass_edge_w)),
+        (road_west, grass_center, int(road_west_x + road_w)),
+        (grass_center, road_east, int(grass_center_x + grass_center_w)),
+        (road_east, grass_east, int(road_east_x + road_w)),
+    ):
+        level.add_connector(
+            Window(
+                int(conn_x),
+                int(y0),
+                int(wt),
+                int(h),
+                left_room,
+                right_room,
+                sill_height=0,
+                window_height=opening_h,
+                floor_tex=str(road_tex),
+                ceil_tex="F_SKY1",
+            )
+        )
+
+    return CentralLawnRoadsResult(
+        grass_west=grass_west,
+        road_west=road_west,
+        grass_center=grass_center,
+        road_east=road_east,
+        grass_east=grass_east,
+    )
 
 
 def build_brown_strip(
@@ -325,7 +415,7 @@ def build_cross_corridor_and_connections(
     west_corridor: Room,
     middle_corridor: Room,
     east_corridor: Room,
-    lawn: Room,
+    lawn_connections: List[Room],
     lawn_top_y: int,
     wall_thickness: int,
     brown_ground_east: Room,
@@ -345,9 +435,12 @@ def build_cross_corridor_and_connections(
     level.add_connector(Window(middle_corridor.x, int(lawn_top_y), DEFAULT_CORRIDOR_W, int(wall_thickness), middle_corridor, cross, sill_height=0, window_height=128))
     level.add_connector(Window(east_corridor.x, int(lawn_top_y), DEFAULT_CORRIDOR_W, int(wall_thickness), east_corridor, cross, sill_height=0, window_height=128))
 
-    lawn_conn_width = 256
-    lawn_conn_x = int(lawn.x) + (int(lawn.width) // 2) - (lawn_conn_width // 2)
-    level.add_connector(Window(lawn_conn_x, int(lawn_top_y), lawn_conn_width, int(wall_thickness), lawn, cross, sill_height=0, window_height=128))
+    for lawn in lawn_connections:
+        conn_w = int(min(256, int(lawn.width)))
+        if conn_w <= 0:
+            continue
+        lawn_conn_x = int(lawn.x) + (int(lawn.width) // 2) - (conn_w // 2)
+        level.add_connector(Window(lawn_conn_x, int(lawn_top_y), conn_w, int(wall_thickness), lawn, cross, sill_height=0, window_height=int(cross_height)))
 
     level.add_connector(
         Window(
@@ -471,3 +564,135 @@ def build_south_gates_and_outside(
     level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag, room=outside, room2=lawn))
 
     return GateAndOutsideResult(outside=outside)
+
+
+def build_south_gates_and_outside_with_roads(
+    level: Level,
+    *,
+    start_x: int,
+    start_y: int,
+    wall_thickness: int,
+    outside_height: int,
+    # Must match the central lawn strip layout.
+    grass_edge_w: int,
+    road_w: int,
+    grass_center_w: int,
+    inside_road_west: Room,
+    inside_road_east: Room,
+    sign_target: Room,
+    grass_tex: str = "PYGRASS",
+    road_tex: str = "FLOOR0_1",
+) -> GateAndOutsideResult:
+    """Build outside campus as grass+road strips and connect the gates to the road strips."""
+
+    wt = int(wall_thickness)
+    x0 = int(start_x)
+    y0 = int(start_y)
+    outside_y = int(y0) - int(outside_height) - wt
+
+    grass_edge_w = int(grass_edge_w)
+    road_w = int(road_w)
+    grass_center_w = int(grass_center_w)
+
+    # Outside strips (same x layout as the lawn).
+    out_grass_west = level.add_room(Lawn(x0, outside_y, grass_edge_w, int(outside_height), floor_tex=str(grass_tex)))
+    out_road_west_x = int(x0 + grass_edge_w + wt)
+    out_road_west = level.add_room(Lawn(out_road_west_x, outside_y, road_w, int(outside_height), floor_tex=str(road_tex)))
+
+    out_grass_center_x = int(out_road_west_x + road_w + wt)
+    out_grass_center = level.add_room(Lawn(out_grass_center_x, outside_y, grass_center_w, int(outside_height), floor_tex=str(grass_tex)))
+
+    out_road_east_x = int(out_grass_center_x + grass_center_w + wt)
+    out_road_east = level.add_room(Lawn(out_road_east_x, outside_y, road_w, int(outside_height), floor_tex=str(road_tex)))
+
+    out_grass_east_x = int(out_road_east_x + road_w + wt)
+    out_grass_east = level.add_room(Lawn(out_grass_east_x, outside_y, grass_edge_w, int(outside_height), floor_tex=str(grass_tex)))
+
+    # Open outside gaps so it stays walkable.
+    for left_room, right_room, conn_x in (
+        (out_grass_west, out_road_west, int(x0 + grass_edge_w)),
+        (out_road_west, out_grass_center, int(out_road_west_x + road_w)),
+        (out_grass_center, out_road_east, int(out_grass_center_x + grass_center_w)),
+        (out_road_east, out_grass_east, int(out_road_east_x + road_w)),
+    ):
+        level.add_connector(
+            Window(
+                int(conn_x),
+                int(outside_y),
+                int(wt),
+                int(outside_height),
+                left_room,
+                right_room,
+                sill_height=0,
+                window_height=128,
+                floor_tex=str(road_tex),
+                ceil_tex="F_SKY1",
+            )
+        )
+
+    # Gates: connect outside road strips into the inside road strips.
+    gate_width = int(road_w)
+    gate1_tag = level.get_new_tag()
+    gate1_x = int(out_road_west_x)
+    level.add_connector(
+        Door(
+            gate1_x,
+            int(y0) - wt,
+            gate_width,
+            int(wt),
+            out_road_west,
+            inside_road_west,
+            texture="BIGDOOR2",
+            state="open",
+            tag=gate1_tag,
+            linedef_action=0,
+        )
+    )
+
+    switch1_x = int(gate1_x) - 32
+    switch1_y = int(y0) - wt
+    level.add_connector(Switch(switch1_x, switch1_y, action=42, tag=gate1_tag, room=out_road_west, room2=inside_road_west))
+
+    gate2_tag = level.get_new_tag()
+    gate2_x = int(out_road_east_x)
+    level.add_connector(
+        Door(
+            gate2_x,
+            int(y0) - wt,
+            gate_width,
+            int(wt),
+            out_road_east,
+            inside_road_east,
+            texture="BIGDOOR2",
+            state="open",
+            tag=gate2_tag,
+            linedef_action=0,
+        )
+    )
+
+    switch2_x = int(gate2_x) + gate_width + 16
+    switch2_y = int(y0) - wt
+    level.add_connector(Switch(switch2_x, switch2_y, action=42, tag=gate2_tag, room=out_road_east, room2=inside_road_east))
+
+    # Sign alcove texture strip on the south boundary.
+    # Keep it fully inside the center grass strip so it doesn't land exactly
+    # on a strip boundary (endpoint cuts are intentionally ignored).
+    sign_width = 128
+    sign_x = int(out_grass_center_x + (grass_center_w - sign_width) // 2)
+    level.add_connector(
+        Window(
+            sign_x,
+            int(y0) - 8,
+            sign_width,
+            8,
+            sign_target,
+            None,
+            sill_height=0,
+            window_height=128,
+            wall_tex="PLUTOSGN",
+            floor_tex=str(grass_tex),
+            ceil_tex="F_SKY1",
+        )
+    )
+
+    return GateAndOutsideResult(outside=out_grass_center)

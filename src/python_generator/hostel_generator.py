@@ -17,10 +17,12 @@ from layout.hostel_layout import (
     build_brown_west_half_segments,
     build_brown_strip,
     build_central_lawn,
+    build_central_lawn_with_roads,
     build_cross_corridor_and_connections,
     build_mess_hall_with_door_and_switch,
     build_middle_lawn_buffer,
     build_south_gates_and_outside,
+    build_south_gates_and_outside_with_roads,
     compute_stair_attach_and_reserved_span,
     DEFAULT_CORRIDOR_W,
     DEFAULT_ROOM_W,
@@ -473,11 +475,30 @@ class HostelGenerator:
         # Unit = 256 + 16 = 272
         # Total = 16 * 272 + 16 = 4368
         wing_height = 4368
-        lawn_width = 512
+        # Widen the main lawn / central spacing by 75%.
+        # Keep aligned to 16-unit grid to preserve exact-edge connector cuts.
+        lawn_width = 896
         lawn_height = wing_height 
         
-        # 1. Create Central Lawn
-        lawn = build_central_lawn(self.level, x=self.start_x, y=self.start_y, width=lawn_width, height=lawn_height, floor_tex="PYGRASS")
+        # 1. Create Central Lawn + Roads (parallel to the wings).
+        # The lawn is split into strips separated by wall-thickness connector gaps,
+        # so we can place road textures without overlapping sectors.
+        lawn_parts = build_central_lawn_with_roads(
+            self.level,
+            x=self.start_x,
+            y=self.start_y,
+            width=lawn_width,
+            height=lawn_height,
+            wall_thickness=self.wall_thickness,
+            grass_tex="PYGRASS",
+            road_tex="FLOOR0_1",
+            grass_edge_w=96,
+            road_w=128,
+            grass_center_w=384,
+            connect_window_height=128,
+        )
+        lawn_west = lawn_parts.grass_west
+        lawn_east = lawn_parts.grass_east
 
         # 2. Generate Middle Wing (West of the lawn)
         # Naming convention used across this project:
@@ -554,7 +575,7 @@ class HostelGenerator:
             height=lawn_height,
             wall_thickness=self.wall_thickness,
             middle_wing_x=middle_wing_x,
-            lawn=lawn,
+            lawn=lawn_west,
             reserved_y0=middle_stair_reserved_y0,
             reserved_y1=middle_stair_reserved_y1,
             floor_tex="PYGRASS",
@@ -567,7 +588,7 @@ class HostelGenerator:
 
         middle_corridor = middle_wing.generate(
             self.level,
-            lawn,
+            lawn_west,
             floor_height=0,
             ceil_height=128,
             story_tag=0,
@@ -605,7 +626,7 @@ class HostelGenerator:
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)
         east_rooms_x = self.start_x + lawn_width + self.wall_thickness
         east_wing = Wing(east_rooms_x, self.start_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        east_corridor = east_wing.generate(self.level, lawn, floor_height=0, ceil_height=128, story_tag=0)
+        east_corridor = east_wing.generate(self.level, lawn_east, floor_height=0, ceil_height=128, story_tag=0)
         
         # 4. Cross Corridor (North)
         # Connects West Wing, Middle Wing, East Wing, Lawn, and Mess Hall
@@ -616,7 +637,7 @@ class HostelGenerator:
             west_corridor=west_corridor,
             middle_corridor=middle_corridor,
             east_corridor=east_corridor,
-            lawn=lawn,
+            lawn_connections=[lawn_parts.road_west, lawn_parts.road_east],
             lawn_top_y=lawn_top_y,
             wall_thickness=self.wall_thickness,
             brown_ground_east=brown_ground_east,
@@ -960,15 +981,21 @@ class HostelGenerator:
                 lane_offset_y=int(lane_idx * lane_stride_1),
             )
         
-        # 6. Gates (South)
-        build_south_gates_and_outside(
+        # 6. Gates (South) + Outside Roads
+        build_south_gates_and_outside_with_roads(
             self.level,
             start_x=self.start_x,
             start_y=self.start_y,
-            lawn_width=lawn_width,
             wall_thickness=self.wall_thickness,
-            lawn=lawn,
             outside_height=256,
+            grass_edge_w=96,
+            road_w=128,
+            grass_center_w=384,
+            inside_road_west=lawn_parts.road_west,
+            inside_road_east=lawn_parts.road_east,
+            sign_target=lawn_parts.grass_center,
+            grass_tex="PYGRASS",
+            road_tex="FLOOR0_1",
         )
 
         # 7. Stairs + off-map 2nd floor connected via line portals

@@ -1,7 +1,20 @@
 from .element import Element
 
 class Room(Element):
-    def __init__(self, x: int, y: int, width: int, height: int, floor_tex: str = "FLOOR4_8", wall_tex: str = "STARTAN3", ceil_tex: str = "CEIL3_5", floor_height: int = 0, ceil_height: int = 128, tag: int = 0) -> None:
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        floor_tex: str = "FLOOR4_8",
+        wall_tex: str = "STARTAN3",
+        ceil_tex: str = "CEIL3_5",
+        floor_height: int = 0,
+        ceil_height: int = 128,
+        tag: int = 0,
+        light: int = 160,
+    ) -> None:
         super().__init__(x, y)
         self.width = width
         self.height = height
@@ -11,6 +24,7 @@ class Room(Element):
         self.floor_height = floor_height
         self.ceil_height = ceil_height
         self.tag = tag
+        self.light = int(light)
         self.cuts = {
             'top': [],
             'bottom': [],
@@ -91,12 +105,13 @@ class Room(Element):
                              wall_tex=self.wall_tex,
                              floor_height=self.floor_height,
                              ceil_height=self.ceil_height,
+                             light=int(getattr(self, 'light', 160)),
                              tag=self.tag)
 
 class Corridor(Room):
-    def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5"):
-        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex)
+    def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5", light: int = 160):
+        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex, light=int(light))
 
 class Lawn(Room):
-    def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7"):
-        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256)
+    def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7", light: int = 160):
+        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256, light=int(light))

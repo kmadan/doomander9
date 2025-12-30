@@ -982,7 +982,7 @@ class HostelGenerator:
             )
         
         # 6. Gates (South) + Outside Roads
-        build_south_gates_and_outside_with_roads(
+        gates_result = build_south_gates_and_outside_with_roads(
             self.level,
             start_x=self.start_x,
             start_y=self.start_y,
@@ -996,7 +996,13 @@ class HostelGenerator:
             sign_target=lawn_parts.grass_center,
             grass_tex="PYGRASS",
             road_tex="FLOOR0_1",
+            campus_height=3072,
+            campus_wall_tex="STONE2",
         )
+
+        # Spawn the player out on the campus road, facing into the gates.
+        if getattr(gates_result, "spawn", None):
+            self.level.test_spawn = gates_result.spawn
 
         # 7. Stairs + off-map 2nd floor connected via line portals
         # The 2nd floor is a separate copy of the building placed off-map, so doors

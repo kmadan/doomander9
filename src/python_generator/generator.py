@@ -31,7 +31,7 @@ class Level:
             conn.build(builder)
 
 class Room:
-    def __init__(self, x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STARTAN3", ceil_tex="CEIL3_5", floor_height=0, ceil_height=128):
+    def __init__(self, x, y, width, height, floor_tex="FLOOR4_8", wall_tex="STARTAN3", ceil_tex="CEIL3_5", floor_height=0, ceil_height=128, light=160):
         self.x = x
         self.y = y
         self.width = width
@@ -41,6 +41,7 @@ class Room:
         self.ceil_tex = ceil_tex
         self.floor_height = floor_height
         self.ceil_height = ceil_height
+        self.light = int(light)
         self.cuts = {
             'top': [],
             'bottom': [],
@@ -90,7 +91,8 @@ class Room:
                              ceil_tex=self.ceil_tex, 
                              wall_tex=self.wall_tex,
                              floor_height=self.floor_height,
-                             ceil_height=self.ceil_height)
+                             ceil_height=self.ceil_height,
+                             light=int(getattr(self, 'light', 160)))
 
 class Connector:
     def __init__(self, x, y, width, height, room1, room2):
@@ -292,10 +294,10 @@ class Wing:
             current_x += self.room_width + self.wall_thickness
 
 class Corridor(Room):
-    def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5"):
-        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex)
+    def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5", light=160):
+        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex, light=light)
 
 class Lawn(Room):
-    def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7"):
-        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256)
+    def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7", light=160):
+        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256, light=light)
 

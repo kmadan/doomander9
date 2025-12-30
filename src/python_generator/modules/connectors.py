@@ -41,12 +41,13 @@ class Connector(Element):
             room.add_cut('bottom', (self.x + self.width) - room.x)
 
 class Door(Connector):
-    def __init__(self, x, y, width, height, room1, room2, texture="BIGDOOR2", state='closed', tag=0, linedef_action=1):
+    def __init__(self, x, y, width, height, room1, room2, texture="BIGDOOR2", state='closed', tag=0, linedef_action=1, light: int | None = None):
         super().__init__(x, y, width, height, room1, room2)
         self.texture = texture
         self.state = state
         self.tag = tag
         self.linedef_action = linedef_action
+        self.light = int(light) if light is not None else None
             
     def build(self, builder):
         # Draw door sector (Closed: Ceiling = Floor)
@@ -96,6 +97,7 @@ class Door(Connector):
                              wall_tex="DOORTRAK", # Side walls
                              floor_height=base_floor, 
                              ceil_height=ceil_h,
+                             light=(int(self.light) if self.light is not None else 160),
                              tag=door_sector_tag) # Closed or Open
                              
         # Iterate ALL linedefs to find those belonging to this door
@@ -309,13 +311,28 @@ class Switch(Element):
                     pass
 
 class Window(Connector):
-    def __init__(self, x, y, width, height, room1, room2, sill_height=32, window_height=64, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3"):
+    def __init__(
+        self,
+        x,
+        y,
+        width,
+        height,
+        room1,
+        room2,
+        sill_height=32,
+        window_height=64,
+        floor_tex="FLOOR4_8",
+        ceil_tex="CEIL3_5",
+        wall_tex="STARTAN3",
+        light: int | None = None,
+    ):
         super().__init__(x, y, width, height, room1, room2)
         self.sill_height = sill_height
         self.window_height = window_height
         self.floor_tex = floor_tex
         self.ceil_tex = ceil_tex
         self.wall_tex = wall_tex
+        self.light = int(light) if light is not None else None
         
     def build(self, builder):
         # Draw window sector
@@ -354,6 +371,7 @@ class Window(Connector):
                              wall_tex=self.wall_tex, # Side walls (jambs)
                              floor_height=base_floor + self.sill_height, 
                              ceil_height=base_floor + self.sill_height + self.window_height,
+                             light=(int(self.light) if self.light is not None else 160),
                              tag=window_tag)
                              
         # Iterate ALL linedefs to find those belonging to this window

@@ -2,7 +2,7 @@ import os
 
 from typing import Tuple, Optional, Dict
 from modules.level import Level
-from modules.geometry import Lawn, Room
+from modules.geometry import Lawn, Room, Corridor
 from modules.connectors import Window, Portal
 from modules.wing import Wing
 
@@ -637,6 +637,328 @@ class HostelGenerator:
             cross_height=cross_height,
             mess_hall_height=512,
         )
+
+        # --- North extensions (all 3 wings) ---
+        # Cross-corridor and mess hall remain fixed. We add new "north" wing sections
+        # offset outward, connected via a small side corridor from the cross corridor.
+        # Push the north sections far enough outward that their large outdoor
+        # sectors (lawn/brown strip spans full wing height) don't overlap the
+        # fixed hub (cross-corridor/mess hall) or the legacy corridor Xs.
+        north_outward_dx = int((DEFAULT_ROOM_W * 5) + self.wall_thickness)
+        cross_top_y = int(cross_y + cross_height)
+        north_section_y = int(cross_top_y + self.wall_thickness)
+        # Must clear existing stair-extension geometry near wing north ends.
+        # Use a large indoor-gap band so connector corridors never overlap the
+        # F2->F3 extensions (Middle/West) and portal-entry volumes.
+        north_gap_y = int(DEFAULT_CORRIDOR_W * 16)
+        north_section_base_y = int(north_section_y + north_gap_y)
+
+        def _connect_side_corridor(
+            *,
+            floor_h: int,
+            ceil_h: int,
+            hub_room: Room,
+            north_corridor: Room,
+            branch_x: int,
+            branch_h: int,
+            lane_offset_y: int = 0,
+        ) -> None:
+            """Connect hub_room -> branch -> horizontal corridor -> vertical corridor -> north_corridor.
+
+            This deliberately routes through a clear indoor gap: the north wing's outdoor sectors
+            start at `north_corridor.y`, while all connector rooms live strictly south of that.
+            """
+
+            opening_h = int(max(1, int(ceil_h) - int(floor_h)))
+
+            hub_top_y = int(int(hub_room.y) + int(hub_room.height))
+            stem_y = int(hub_top_y + int(self.wall_thickness))
+            lane_y = int(stem_y + int(lane_offset_y))
+
+            # Vertical stem off the hub so each wing can use a separate Y lane.
+            stem_h = int(int(lane_offset_y) + int(branch_h))
+            if stem_h <= 0:
+                return
+
+            stem = self.level.add_room(Corridor(int(branch_x), int(stem_y), int(DEFAULT_CORRIDOR_W), int(stem_h)))
+            stem.floor_height = int(floor_h)
+            stem.ceil_height = int(ceil_h)
+
+            # Hub -> stem opening (north of hub).
+            self.level.add_connector(
+                Window(
+                    int(branch_x),
+                    int(hub_top_y),
+                    int(DEFAULT_CORRIDOR_W),
+                    int(self.wall_thickness),
+                    hub_room,
+                    stem,
+                    sill_height=0,
+                    window_height=opening_h,
+                    floor_tex=hub_room.floor_tex,
+                    ceil_tex=hub_room.ceil_tex,
+                    wall_tex=hub_room.wall_tex,
+                )
+            )
+
+            # Horizontal segment from branch toward the x-aligned vertical segment.
+            if int(north_corridor.x) < int(stem.x):
+                side_x = int(north_corridor.x)
+                side_w = int((int(stem.x) - int(self.wall_thickness)) - side_x)
+                conn_x = int(int(stem.x) - int(self.wall_thickness))
+                branch_side_left_to_right = False
+            else:
+                side_x = int(int(stem.x) + int(DEFAULT_CORRIDOR_W) + int(self.wall_thickness))
+                side_w = int((int(north_corridor.x) + int(DEFAULT_CORRIDOR_W)) - side_x)
+                conn_x = int(int(stem.x) + int(DEFAULT_CORRIDOR_W))
+                branch_side_left_to_right = True
+
+            if side_w <= 0:
+                # No horizontal run needed (or not enough space). Connect straight north.
+                up_x = int(north_corridor.x)
+                up_y = int(int(lane_y) + int(branch_h) + int(self.wall_thickness))
+                up_h = int((int(north_corridor.y) - int(self.wall_thickness)) - up_y)
+                if up_h <= 0:
+                    return
+
+                up = self.level.add_room(Corridor(int(up_x), int(up_y), int(DEFAULT_CORRIDOR_W), int(up_h)))
+                up.floor_height = int(floor_h)
+                up.ceil_height = int(ceil_h)
+
+                # Stem <-> up (north).
+                # Works when lane_offset_y==0 so the stem's top edge matches lane_y+branch_h.
+                self.level.add_connector(
+                    Window(
+                        int(up_x),
+                        int(int(stem.y) + int(stem.height)),
+                        int(DEFAULT_CORRIDOR_W),
+                        int(self.wall_thickness),
+                        stem,
+                        up,
+                        sill_height=0,
+                        window_height=opening_h,
+                        floor_tex=stem.floor_tex,
+                        ceil_tex=stem.ceil_tex,
+                        wall_tex=stem.wall_tex,
+                    )
+                )
+
+                # Up <-> north corridor.
+                self.level.add_connector(
+                    Window(
+                        int(up_x),
+                        int(int(north_corridor.y) - int(self.wall_thickness)),
+                        int(DEFAULT_CORRIDOR_W),
+                        int(self.wall_thickness),
+                        up,
+                        north_corridor,
+                        sill_height=0,
+                        window_height=opening_h,
+                        floor_tex=stem.floor_tex,
+                        ceil_tex=stem.ceil_tex,
+                        wall_tex=stem.wall_tex,
+                    )
+                )
+                return
+
+            side = self.level.add_room(Corridor(int(side_x), int(lane_y), int(side_w), int(branch_h)))
+            side.floor_height = int(floor_h)
+            side.ceil_height = int(ceil_h)
+
+            # Branch <-> side.
+            self.level.add_connector(
+                Window(
+                    int(conn_x),
+                    int(lane_y),
+                    int(self.wall_thickness),
+                    int(branch_h),
+                    stem if branch_side_left_to_right else side,
+                    side if branch_side_left_to_right else stem,
+                    sill_height=0,
+                    window_height=opening_h,
+                    floor_tex=stem.floor_tex,
+                    ceil_tex=stem.ceil_tex,
+                    wall_tex=stem.wall_tex,
+                )
+            )
+
+            # Vertical segment aligned with the *south edge* of the north corridor.
+            up_x = int(north_corridor.x)
+            up_y = int(int(lane_y) + int(branch_h) + int(self.wall_thickness))
+            up_h = int((int(north_corridor.y) - int(self.wall_thickness)) - up_y)
+            if up_h <= 0:
+                return
+
+            up = self.level.add_room(Corridor(int(up_x), int(up_y), int(DEFAULT_CORRIDOR_W), int(up_h)))
+            up.floor_height = int(floor_h)
+            up.ceil_height = int(ceil_h)
+
+            # Side <-> up (turn north).
+            self.level.add_connector(
+                Window(
+                    int(up_x),
+                    int(int(lane_y) + int(branch_h)),
+                    int(DEFAULT_CORRIDOR_W),
+                    int(self.wall_thickness),
+                    side,
+                    up,
+                    sill_height=0,
+                    window_height=opening_h,
+                    floor_tex=stem.floor_tex,
+                    ceil_tex=stem.ceil_tex,
+                    wall_tex=stem.wall_tex,
+                )
+            )
+
+            # Up <-> north corridor (attach to the south edge of the north corridor).
+            self.level.add_connector(
+                Window(
+                    int(up_x),
+                    int(int(north_corridor.y) - int(self.wall_thickness)),
+                    int(DEFAULT_CORRIDOR_W),
+                    int(self.wall_thickness),
+                    up,
+                    north_corridor,
+                    sill_height=0,
+                    window_height=opening_h,
+                    floor_tex=stem.floor_tex,
+                    ceil_tex=stem.ceil_tex,
+                    wall_tex=stem.wall_tex,
+                )
+            )
+
+        def _add_north_wings_for_floor(*, base_y: int, floor_h: int, ceil_h: int, outward_dx: int) -> Tuple[Room, Room, Room]:
+            """Add north wing sections for West/Middle/East. Returns their corridor rooms."""
+
+            # Middle+West north pair with brown strip between them.
+            middle_wing_x_n = int(middle_wing_x - int(outward_dx))
+
+            # With no new stairs in the north sections, reserve span is empty.
+            empty_reserved = int(base_y)
+
+            brown_n = build_brown_strip(
+                self.level,
+                start_y=int(base_y),
+                height=int(wing_height),
+                wall_thickness=int(self.wall_thickness),
+                middle_wing_x=int(middle_wing_x_n),
+                brown_width=int(brown_width),
+                west_stair_reserved_y0=empty_reserved,
+                west_stair_reserved_y1=empty_reserved,
+                floor_tex="RROCK19",
+            )
+
+            brown_ground_east_n = brown_n.east
+            brown_ground_west_default_n = brown_n.west_default
+            corridor_window_targets_west_n = brown_n.corridor_window_targets_west
+            brown_ground_x_n = brown_n.west_x
+
+            west_wing_x_n = int(brown_ground_x_n - (DEFAULT_CORRIDOR_W + self.wall_thickness))
+
+            # Local lawn east of middle corridor (outboard so it doesn't overlap the fixed mess hall).
+            buffer_x_n = int(middle_wing_x_n) + DEFAULT_CORRIDOR_W + int(self.wall_thickness)
+            lawn_local_x_n = int(buffer_x_n + 256 + self.wall_thickness)
+            lawn_local_n = self.level.add_room(Lawn(int(lawn_local_x_n), int(base_y), int(lawn_width), int(wing_height), floor_tex="PYGRASS"))
+            lawn_local_n.floor_height = 0
+            lawn_local_n.ceil_height = max(int(getattr(lawn_local_n, 'ceil_height', 0) or 0), int(ceil_h))
+
+            buffer_n = build_middle_lawn_buffer(
+                self.level,
+                start_y=int(base_y),
+                height=int(wing_height),
+                wall_thickness=int(self.wall_thickness),
+                middle_wing_x=int(middle_wing_x_n),
+                lawn=lawn_local_n,
+                reserved_y0=empty_reserved,
+                reserved_y1=empty_reserved,
+                floor_tex="PYGRASS",
+                connect_window_height=int(ceil_h),
+                connect_sill_height=0,
+                connect_floor_tex="PYGRASS",
+                connect_ceil_tex="F_SKY1",
+                pass_window_textures=True,
+            )
+
+            middle_wing_n = Wing(int(middle_wing_x_n), int(base_y), side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+            middle_corridor_n = middle_wing_n.generate(
+                self.level,
+                lawn_local_n,
+                floor_height=int(floor_h),
+                ceil_height=int(ceil_h),
+                story_tag=0,
+                exterior_area=brown_ground_east_n,
+                add_corridor_windows=True,
+                corridor_window_skip_ranges=[],
+                corridor_window_targets=buffer_n.corridor_window_targets,
+                door_state='closed',
+            )
+
+            west_outside_x_n = int(west_wing_x_n - DEFAULT_ROOM_W - self.wall_thickness - west_outside_width - self.wall_thickness)
+            west_outside_n = self.level.add_room(Lawn(int(west_outside_x_n), int(base_y), int(west_outside_width), int(wing_height), floor_tex="PYGRASS"))
+            west_outside_n.floor_height = 0
+            west_outside_n.ceil_height = max(int(getattr(west_outside_n, 'ceil_height', 0) or 0), int(ceil_h))
+
+            west_wing_n = Wing(int(west_wing_x_n), int(base_y), side='left', num_rooms_per_side=7, corridor_on_lawn_side=True)
+            west_corridor_n = west_wing_n.generate(
+                self.level,
+                brown_ground_west_default_n,
+                floor_height=int(floor_h),
+                ceil_height=int(ceil_h),
+                story_tag=0,
+                exterior_area=west_outside_n,
+                add_corridor_windows=True,
+                corridor_window_skip_ranges=[],
+                corridor_window_targets=corridor_window_targets_west_n,
+                door_state='closed',
+            )
+
+            # East north wing with a local lawn west of its rooms.
+            east_rooms_x_n = int(east_rooms_x + int(outward_dx))
+            east_lawn_x_n = int(east_rooms_x_n - self.wall_thickness - lawn_width)
+            east_lawn_n = self.level.add_room(Lawn(int(east_lawn_x_n), int(base_y), int(lawn_width), int(wing_height), floor_tex="PYGRASS"))
+            east_lawn_n.floor_height = 0
+            east_lawn_n.ceil_height = max(int(getattr(east_lawn_n, 'ceil_height', 0) or 0), int(ceil_h))
+
+            east_wing_n = Wing(int(east_rooms_x_n), int(base_y), side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
+            east_corridor_n = east_wing_n.generate(
+                self.level,
+                east_lawn_n,
+                floor_height=int(floor_h),
+                ceil_height=int(ceil_h),
+                story_tag=0,
+                door_state='closed',
+            )
+
+            return west_corridor_n, middle_corridor_n, east_corridor_n
+
+        # F1 north wings: connect from the fixed cross corridor (north edge).
+        west_corridor_n1, middle_corridor_n1, east_corridor_n1 = _add_north_wings_for_floor(
+            base_y=north_section_base_y,
+            floor_h=0,
+            ceil_h=128,
+            outward_dx=north_outward_dx,
+        )
+
+        branch_y_1 = int(cross_top_y + self.wall_thickness)
+        branch_h_1 = int(DEFAULT_CORRIDOR_W)
+        lane_stride_1 = int(DEFAULT_CORRIDOR_W + self.wall_thickness)
+        for lane_idx, (south_x, north_corr) in enumerate(
+            (
+                (int(west_corridor.x), west_corridor_n1),
+                (int(middle_corridor.x), middle_corridor_n1),
+                (int(east_corridor.x), east_corridor_n1),
+            )
+        ):
+            # Hub is the cross corridor for F1.
+            _connect_side_corridor(
+                floor_h=0,
+                ceil_h=128,
+                hub_room=cross_corridor,
+                north_corridor=north_corr,
+                branch_x=int(south_x),
+                branch_h=branch_h_1,
+                lane_offset_y=int(lane_idx * lane_stride_1),
+            )
         
         # 6. Gates (South)
         build_south_gates_and_outside(
@@ -655,7 +977,9 @@ class HostelGenerator:
         # Line_SetPortal so it feels seamless.
         # Off-map placement for the 2nd floor so it is visible in automap.
         # Place it north of the main area (same X footprint).
-        second_floor_offset_y = -6000
+        # Off-map floors must not overlap other floors in XY.
+        # With north extensions, each floor spans ~2*wing_height in Y.
+        second_floor_offset_y = -14000
         second_floor_floor = self.steps * self.rise  # 140
         second_floor_ceil = second_floor_floor + 128
 
@@ -832,6 +1156,34 @@ class HostelGenerator:
         east_wing_2 = Wing(east_rooms_x, self.start_y + second_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
         east_corridor_2 = east_wing_2.generate(self.level, lawn2, floor_height=second_floor_floor, ceil_height=second_floor_ceil, story_tag=0, door_state='closed')
 
+        # North extensions on F2: connect from each south corridor's north end.
+        north_section_y_2 = int(east_corridor_2.y + east_corridor_2.height + self.wall_thickness)
+        north_section_base_y_2 = int(north_section_y_2 + north_gap_y)
+        west_corridor_n2, middle_corridor_n2, east_corridor_n2 = _add_north_wings_for_floor(
+            base_y=north_section_base_y_2,
+            floor_h=second_floor_floor,
+            ceil_h=second_floor_ceil,
+            outward_dx=north_outward_dx,
+        )
+        lane_stride_2 = int(DEFAULT_CORRIDOR_W + self.wall_thickness)
+        lane_base_2 = int(north_gap_y // 2)
+        for lane_idx, (hub, north_corr) in enumerate(
+            (
+                (west_corridor_2, west_corridor_n2),
+                (middle_corridor_2, middle_corridor_n2),
+                (east_corridor_2, east_corridor_n2),
+            )
+        ):
+            _connect_side_corridor(
+                floor_h=second_floor_floor,
+                ceil_h=second_floor_ceil,
+                hub_room=hub,
+                north_corridor=north_corr,
+                branch_x=int(hub.x),
+                branch_h=int(DEFAULT_CORRIDOR_W),
+                lane_offset_y=int(lane_base_2 + lane_idx * lane_stride_2),
+            )
+
         # Stair/portal builders were extracted to `layout/stairs.py`.
 
         # Portal ids (unique, large values to avoid clashing with sector tags)
@@ -932,7 +1284,7 @@ class HostelGenerator:
             )
 
         # 8. Third Floor (full copy matching 2nd floor semantics)
-        third_floor_offset_y = -12000
+        third_floor_offset_y = -28000
         third_floor_floor = 2 * self.steps * self.rise
         third_floor_ceil = third_floor_floor + 128
 
@@ -1075,6 +1427,34 @@ class HostelGenerator:
         # East Wing 3rd floor copy
         east_wing_3 = Wing(east_rooms_x, self.start_y + third_floor_offset_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
         east_corridor_3 = east_wing_3.generate(self.level, lawn3, floor_height=third_floor_floor, ceil_height=third_floor_ceil, story_tag=0, door_state='closed')
+
+        # North extensions on F3.
+        north_section_y_3 = int(east_corridor_3.y + east_corridor_3.height + self.wall_thickness)
+        north_section_base_y_3 = int(north_section_y_3 + north_gap_y)
+        west_corridor_n3, middle_corridor_n3, east_corridor_n3 = _add_north_wings_for_floor(
+            base_y=north_section_base_y_3,
+            floor_h=third_floor_floor,
+            ceil_h=third_floor_ceil,
+            outward_dx=north_outward_dx,
+        )
+        lane_stride_3 = int(DEFAULT_CORRIDOR_W + self.wall_thickness)
+        lane_base_3 = int(north_gap_y // 2)
+        for lane_idx, (hub, north_corr) in enumerate(
+            (
+                (west_corridor_3, west_corridor_n3),
+                (middle_corridor_3, middle_corridor_n3),
+                (east_corridor_3, east_corridor_n3),
+            )
+        ):
+            _connect_side_corridor(
+                floor_h=third_floor_floor,
+                ceil_h=third_floor_ceil,
+                hub_room=hub,
+                north_corridor=north_corr,
+                branch_x=int(hub.x),
+                branch_h=int(DEFAULT_CORRIDOR_W),
+                lane_offset_y=int(lane_base_3 + lane_idx * lane_stride_3),
+            )
 
         # Extend stairs from F2 arrivals up to F3, then add corresponding portal entries on F3.
         add_stair_extension(

@@ -29,6 +29,26 @@ def main():
     print("Building Level...")
     level.build(builder)
 
+    # --- Visual facade: add 3D floors for main-floor wings ---
+    # The main-floor wing sectors are tagged with 200 (see HostelGenerator).
+    # We also apply the same 3D floors to any door sectors that received unique
+    # action tags but still need the story floors (recorded by Door.build).
+    facade_story_tag = 200
+    facade_floor_zs = (128, 256)
+    target_tags = [facade_story_tag] + sorted(builder.get_extra_3d_floor_target_tags())
+    for tag in target_tags:
+        for z in facade_floor_zs:
+            builder.add_3d_floor_platform(
+                target_sector_tag=int(tag),
+                z=int(z),
+                thickness=16,
+                floor_tex="FLOOR4_8",
+                ceil_tex="CEIL3_5",
+                wall_tex="STONE2",
+                alpha=255,
+                flags=0,
+            )
+
     # Second floor is now implemented as a disconnected/off-map area connected
     # via line portals (so doors can be independent per floor).
     

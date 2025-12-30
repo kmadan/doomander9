@@ -12,6 +12,10 @@ map MAP01 "Pluto H9: The Preservation"
     Sky1 = "SKY1"           // The sky texture (Standard Doom Sky)
     Music = "D_RUNNIN"      // The music track (Doom II Level 1)
     Cluster = 1             // Assigns this map to a "group" (see below)
+
+    // Method 1: cinematic intro HUD text on level start.
+    // Loads compiled ACS from the defs PK3 (acs/h9_intro.o).
+    LoadACS = "h9_intro"
 }
 
 // 3. Cluster Definition (Optional: Adds text AFTER the level)
@@ -19,7 +23,7 @@ clusterdef 1
 {
     Flat = "FLOOR4_8"       // Background texture for text screen
     Music = "D_READ_M"      // Music for text screen
-    EntryText = "You have successfully documented the layout.",
+    ExitText = "You have successfully documented the layout.",
                "H9 Pluto will live on forever in digital form.",
                " ",
                "Press Fire to end simulation."

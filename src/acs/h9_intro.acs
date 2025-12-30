@@ -1,0 +1,39 @@
+#library "h9_intro"
+#include "zcommon.acs"
+
+
+script 1 ENTER
+{
+    // 1. Setup: Start with black screen instantly
+    FadeTo(0, 0, 0, 1.0, 0.0); 
+    
+    // 2. Cinematic Fade: Fade from black to clear over 2.0 seconds
+    FadeTo(0, 0, 0, 0.0, 2.0);
+    
+    SetFont("SMALLFONT");
+    
+    // Line 1: "It has been 42 years..."
+    // HUDMSG_FADEINOUT | ID: 1 | Color: White | X: 0.5 (Center) | Y: 0.3 (Top-ish) 
+    // Hold: 5.0s | FadeIn: 1.0s | FadeOut: 1.0s
+    HudMessage(s:"It has been 42 years... or perhaps 30."; 
+               HUDMSG_FADEINOUT, 1, CR_WHITE, 0.5, 0.3, 5.0, 1.0, 1.0);
+    
+    Delay(35*6); // Wait 6 seconds (35 tics = 1 second)
+
+    // Line 2: "We lived like kings here."
+    HudMessage(s:"We lived like kings here."; 
+               HUDMSG_FADEINOUT, 1, CR_GOLD, 0.5, 0.4, 5.0, 1.0, 1.0);
+    
+    Delay(35*6);
+
+    // Line 3
+    HudMessage(s:"With hair, without hair... we are young again."; 
+               HUDMSG_FADEINOUT, 1, CR_WHITE, 0.5, 0.5, 5.0, 1.0, 1.0);
+    
+    Delay(35*6);
+
+    // Final Title
+    SetFont("BIGFONT");
+    HudMessage(s:"WELCOME HOME, H9"; 
+               HUDMSG_FADEINOUT, 2, CR_RED, 0.5, 0.6, 7.0, 2.0, 2.0);
+}

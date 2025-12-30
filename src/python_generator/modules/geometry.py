@@ -114,4 +114,6 @@ class Corridor(Room):
 
 class Lawn(Room):
     def __init__(self, x, y, width, height, floor_tex="PYGRASS", wall_tex="BRICK7", light: int = 160):
-        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=256, light=int(light))
+        # Keep outdoor ceilings tall enough that multi-story facades (3 floors)
+        # are not clipped when viewed from the lawn/outside.
+        super().__init__(x, y, width, height, floor_tex, wall_tex, ceil_tex="F_SKY1", ceil_height=384, light=int(light))

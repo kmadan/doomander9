@@ -37,7 +37,9 @@ class Wing:
         # If we are creating a 3D-floor second story inside these sectors, the
         # ceiling must be higher than the 2nd-floor height.
         if story_tag:
-            ceil_height = max(int(ceil_height), 320)
+            # 3 floors: base 0..128, floor2 ~140..268, floor3 ~280..408
+            # Keep extra headroom so exterior openings don't get clipped.
+            ceil_height = max(int(ceil_height), 384)
         # Calculate dimensions
         # We build vertically (North-South)
         
@@ -86,9 +88,23 @@ class Wing:
         # 2. Generate Rooms & Bathroom
         current_y = self.y + self.wall_thickness
         
-        # First block of rooms
-        for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag, door_state=door_state)
+        # First block of rooms (south half): windows bias away from the shared bathroom.
+        # Bathroom is in the middle; for the south half, "away" means toward the south.
+        for _i in range(self.num_rooms_per_side):
+            self._create_room(
+                level,
+                rooms_x,
+                current_y,
+                corridor,
+                door_side,
+                lawn=lawn,
+                exterior_area=exterior_area,
+                floor_height=floor_height,
+                ceil_height=ceil_height,
+                story_tag=story_tag,
+                door_state=door_state,
+                window_bias=-1,
+            )
             current_y += self.room_height + self.wall_thickness
             
         # Bathroom (Central)
@@ -111,9 +127,23 @@ class Wing:
             
         current_y += bath_height + self.wall_thickness
         
-        # Second block of rooms
-        for i in range(self.num_rooms_per_side):
-            self._create_room(level, rooms_x, current_y, corridor, door_side, lawn=lawn, exterior_area=exterior_area, floor_height=floor_height, ceil_height=ceil_height, story_tag=story_tag, door_state=door_state)
+        # Second block of rooms (north half): windows bias away from the shared bathroom.
+        # For the north half, "away" means toward the north.
+        for _i in range(self.num_rooms_per_side):
+            self._create_room(
+                level,
+                rooms_x,
+                current_y,
+                corridor,
+                door_side,
+                lawn=lawn,
+                exterior_area=exterior_area,
+                floor_height=floor_height,
+                ceil_height=ceil_height,
+                story_tag=story_tag,
+                door_state=door_state,
+                window_bias=+1,
+            )
             current_y += self.room_height + self.wall_thickness
             
         # 3. Corridor Windows to Lawn
@@ -163,8 +193,26 @@ class Wing:
 
         if add_corridor_windows and self.corridor_on_lawn_side:
             for i in range(total_units):
-                wy0 = int(win_y + 32)
-                wy1 = int(win_y + 32 + 192)
+                # Half-size window span along wall, and offset away from the
+                # shared bathroom for each wing half.
+                # Segment height is (room_height + wall_thickness) = 272.
+                span = 96
+                base_off = (segment_height - span) // 2
+                # Windows MUST always be offset opposite direction from the
+                # shared bathroom for that wing section.
+                # - south half (first rooms): bias toward south  => -1
+                # - bathroom span: no bias
+                # - north half (second rooms): bias toward north => +1
+                if i < self.num_rooms_per_side:
+                    bias = -1
+                elif i >= self.num_rooms_per_side + 2:
+                    bias = +1
+                else:
+                    bias = 0
+                bias_amt = 32
+                wy0 = int(win_y + base_off + bias * bias_amt)
+                wy0 = int(max(win_y, min(wy0, win_y + segment_height - span)))
+                wy1 = int(wy0 + span)
                 if _overlaps_skip(wy0, wy1):
                     win_y += segment_height
                     continue
@@ -177,15 +225,32 @@ class Wing:
                 wx = lawn_interface_x
                 if self.side == 'right':
                     wx -= self.wall_thickness
+
+                # Vertical opening.
+                sill_h = 32
+                win_h = 48
+                if story_tag and int(floor_height) == 0:
+                    # Facade: must be tall enough to see the 3rd-floor 3D floor
+                    # (platform at z=256 with thickness 16) from outside.
+                    # Also keep a lintel so the opening doesn't run into the ceiling.
+                    lintel_h = 64
+                    # Minimum top to reveal 3rd-floor platform.
+                    required_top = 256 + 16
+                    max_top = int(ceil_height) - lintel_h
+                    # Keep the window a bit lower (not starting at ceiling).
+                    sill_h = 48
+                    desired_top = max(required_top, int(floor_height) + int(sill_h) + 96)
+                    top = min(max_top, max(desired_top, int(floor_height) + int(sill_h) + 64))
+                    win_h = int(max(64, top - (int(floor_height) + int(sill_h))))
                 level.add_connector(Window(
                     wx,
                     wy0,
                     self.wall_thickness,
-                    192,
+                    span,
                     corridor,
                     target_room,
-                    sill_height=32,
-                    window_height=96,
+                    sill_height=sill_h,
+                    window_height=win_h,
                     floor_tex=corridor.floor_tex,
                     ceil_tex=corridor.ceil_tex,
                 ))
@@ -193,7 +258,7 @@ class Wing:
             
         return corridor
 
-    def _create_room(self, level: Level, x: int, y: int, corridor: Room, door_side: str, lawn: Optional[Room] = None, exterior_area: Optional[Room] = None, floor_height: int = 0, ceil_height: int = 128, story_tag: int = 0, door_state: str = 'closed') -> None:
+    def _create_room(self, level: Level, x: int, y: int, corridor: Room, door_side: str, lawn: Optional[Room] = None, exterior_area: Optional[Room] = None, floor_height: int = 0, ceil_height: int = 128, story_tag: int = 0, door_state: str = 'closed', window_bias: int = 0) -> None:
         room = level.add_room(Bedroom(x, y, self.room_width, self.room_height))
         room.floor_height = floor_height
         room.ceil_height = ceil_height
@@ -218,12 +283,38 @@ class Wing:
         # Maybe the Wing should generate a "Backyard" lawn strip.
         
         # For flipped wings (rooms adjacent to lawn), connect window directly to lawn through the wall gap.
-        # Bedroom window sizing: ~30% smaller than before.
-        # Old: segment height 128, window_height 64
-        # New: segment height 96, window_height 48 (centered)
-        window_segment = 96
-        window_offset_y = (self.room_height - window_segment) // 2
-        window_height = 48
+        # Bedroom window sizing.
+        # NOTE: The connector's *thickness* (its `width` on left/right walls)
+        # must remain equal to `wall_thickness` so cuts register on both rooms.
+        # The visible window "size" we tune here is:
+        # - the opening span along the wall (connector `height` on left/right walls)
+        # - the vertical opening height (Window.window_height)
+        #
+        # Make windows half-size vs the previous defaults, and shift slightly
+        # off-center (not perfectly centered on the wall).
+        window_segment = 48  # was 96
+        center_off = (self.room_height - window_segment) // 2
+        bias_amt = 32
+        window_offset_y = int(center_off + int(max(-1, min(1, int(window_bias)))) * bias_amt)
+        window_offset_y = int(max(0, min(window_offset_y, self.room_height - window_segment)))
+        window_height = 24  # was 48
+
+        # Facade pass: on the ground-floor footprint, keep the *same 2D window span*
+        # (so cuts register cleanly), and make the opening tall enough to reveal
+        # the 3D-floor stories from outside, but keep a sill + lintel so the wall
+        # doesn't look completely missing/transparent.
+        if story_tag and int(floor_height) == 0:
+            # Facade pass: ensure openings reveal the 3rd-floor 3D floor (z=256..272)
+            # from outside, but keep a lintel so it doesn't hit the ceiling.
+            lintel_h = 64
+            required_top = 256 + 16
+            window_sill = 48
+            max_top = int(ceil_height) - int(lintel_h)
+            desired_top = max(required_top, int(floor_height) + int(window_sill) + 96)
+            top = min(max_top, desired_top)
+            window_height = int(max(64, top - (int(floor_height) + int(window_sill))))
+        else:
+            window_sill = 48
 
         if (not self.corridor_on_lawn_side) and (lawn is not None):
             if door_side == 'right':
@@ -236,7 +327,7 @@ class Wing:
                     window_segment,
                     lawn,
                     room,
-                    sill_height=48,
+                    sill_height=window_sill,
                     window_height=window_height,
                     floor_tex=room.floor_tex,
                     ceil_tex=room.ceil_tex,
@@ -251,7 +342,7 @@ class Wing:
                     window_segment,
                     room,
                     lawn,
-                    sill_height=48,
+                    sill_height=window_sill,
                     window_height=window_height,
                     floor_tex=room.floor_tex,
                     ceil_tex=room.ceil_tex,
@@ -271,7 +362,7 @@ class Wing:
                     window_segment,
                     exterior_area,
                     room,
-                    sill_height=48,
+                    sill_height=window_sill,
                     window_height=window_height,
                     floor_tex=room.floor_tex,
                     ceil_tex=room.ceil_tex,
@@ -286,7 +377,7 @@ class Wing:
                     window_segment,
                     room,
                     exterior_area,
-                    sill_height=48,
+                    sill_height=window_sill,
                     window_height=window_height,
                     floor_tex=room.floor_tex,
                     ceil_tex=room.ceil_tex,

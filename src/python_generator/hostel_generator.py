@@ -54,6 +54,10 @@ class HostelGenerator:
             rise=self.rise,
         )
 
+        # Shared sector tag used for main-floor wing sectors so we can apply
+        # visual 3D floors (facade) without affecting the off-map portal floors.
+        self._main_wing_story_tag: int = 200
+
     def _create_stairwell(self, src_corridor: Room, side_dir: int, *, attach_y: int, set_spawn: bool, portal_target_corridor: Optional[Room] = None, portal_pair_ids: Optional[Tuple[int, int]] = None) -> Dict[str, Room]:
         hall_h = self.steps * self.step_depth
 
@@ -591,7 +595,7 @@ class HostelGenerator:
             lawn_west,
             floor_height=0,
             ceil_height=128,
-            story_tag=0,
+            story_tag=self._main_wing_story_tag,
             exterior_area=brown_ground_east,
             add_corridor_windows=True,
             corridor_window_skip_ranges=[(middle_stair_reserved_y0, middle_stair_reserved_y1)],
@@ -615,7 +619,7 @@ class HostelGenerator:
             brown_ground_west_default,
             floor_height=0,
             ceil_height=128,
-            story_tag=0,
+            story_tag=self._main_wing_story_tag,
             exterior_area=west_outside,
             add_corridor_windows=True,
             corridor_window_skip_ranges=[(west_stair_reserved_y0, west_stair_reserved_y1)],
@@ -626,7 +630,7 @@ class HostelGenerator:
         # Flipped: rooms adjacent to lawn, corridor on the outside (East)
         east_rooms_x = self.start_x + lawn_width + self.wall_thickness
         east_wing = Wing(east_rooms_x, self.start_y, side='right', num_rooms_per_side=7, corridor_on_lawn_side=False)
-        east_corridor = east_wing.generate(self.level, lawn_east, floor_height=0, ceil_height=128, story_tag=0)
+        east_corridor = east_wing.generate(self.level, lawn_east, floor_height=0, ceil_height=128, story_tag=self._main_wing_story_tag)
         
         # 4. Cross Corridor (North)
         # Connects West Wing, Middle Wing, East Wing, Lawn, and Mess Hall

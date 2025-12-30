@@ -357,13 +357,25 @@ class Window(Connector):
         fh2 = getattr(self.room2, 'floor_height', None)
         base_floor = int(max([h for h in (fh1, fh2) if h is not None] or [0]))
 
-        # If both adjacent rooms share the same non-zero tag, propagate it so
-        # UDMF 3D floors can span through this opening.
+        # Propagate story tags so UDMF 3D floors can span through openings.
+        #
+        # - Primary case: both sides share the same non-zero story tag.
+        # - Facade case: an interior tagged sector opens onto an outdoor sky
+        #   sector (e.g., lawn/brown strip). We still want the window *sector*
+        #   itself to receive the story tag so 3D floors can be visible through
+        #   the exterior opening, without tagging the outdoor sector.
         window_tag = 0
         t1 = getattr(self.room1, 'tag', 0) if self.room1 is not None else 0
         t2 = getattr(self.room2, 'tag', 0) if self.room2 is not None else 0
         if t1 and t1 == t2:
             window_tag = int(t1)
+        else:
+            c1 = getattr(self.room1, 'ceil_tex', None) if self.room1 is not None else None
+            c2 = getattr(self.room2, 'ceil_tex', None) if self.room2 is not None else None
+            if t1 and not t2 and str(c2).upper() == 'F_SKY1':
+                window_tag = int(t1)
+            elif t2 and not t1 and str(c1).upper() == 'F_SKY1':
+                window_tag = int(t2)
 
         builder.draw_polygon(points, 
                              floor_tex=self.floor_tex, 

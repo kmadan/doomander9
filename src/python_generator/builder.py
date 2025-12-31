@@ -185,7 +185,7 @@ class WadBuilder:
         
         self.editor.draw_sector(points, sector, sidedef)
 
-    def draw_polygon(self, points, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3", floor_height=0, ceil_height=128, light=160, tag=0):
+    def draw_polygon(self, points, floor_tex="FLOOR4_8", ceil_tex="CEIL3_5", wall_tex="STARTAN3", floor_height=0, ceil_height=128, light=160, tag=0, special=0):
         """
         Draws a polygonal sector from a list of (x, y) tuples.
         Points should be in Counter-Clockwise order.
@@ -197,6 +197,9 @@ class WadBuilder:
         sector.z_ceil = ceil_height
         sector.light = light
         sector.tag = tag
+        # Doom-format sector special. In omgifol this field is named `type`.
+        # In UDMF conversion this maps to the sector `special`.
+        sector.type = int(special) if special else 0
         
         sidedef = Sidedef()
         sidedef.tx_mid = wall_tex
@@ -409,6 +412,30 @@ class WadBuilder:
                 ld.playercross = True
                 ld.repeatspecial = True
                 ld.monsteractivate = True
+
+            # 11 in Doom format = Exit level (S1 Exit)
+            elif getattr(ld, 'special', 0) == 11:
+                # Map to ZDoom Exit_Normal
+                ld.special = 243
+                ld.arg0 = 0
+                ld.arg1 = 0
+                ld.arg2 = 0
+                ld.arg3 = 0
+                ld.arg4 = 0
+                ld.playeruse = True
+                ld.repeatspecial = False
+
+        # UDMF game-mode flags: ensure Things appear in single-player.
+        # When converting Doom-format THINGS to UDMF, omgifol preserves skill flags
+        # but may leave `single/coop/dm` unset. Some ports treat unset as false.
+        for th in umap.things:
+            # Force these on for all Things.
+            # When converting a classic Doom THING into ZDoom UDMF, omgifol maps
+            # bits that don't exist in the classic flags word to False, which
+            # effectively disables spawning in these game modes.
+            th.single = True
+            th.coop = True
+            th.dm = True
 
         # Assign TIDs to teleport destination things (TeleportDest, DoomEdNum 14).
         # Match by exact coordinates (the generator uses integer coordinates).

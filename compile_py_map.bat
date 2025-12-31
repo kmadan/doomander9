@@ -112,6 +112,16 @@ if exist "%ACC%" (
   echo Skipping ACS compilation; intro text will not appear.
 )
 
+REM If the previous PK3 is still locked (e.g., UZDoom still closing), wait briefly.
+if exist "%DEFS_PK3%" (
+  for /L %%R in (1,1,10) do (
+    del /F /Q "%DEFS_PK3%" >nul 2>nul
+    if not exist "%DEFS_PK3%" goto :DEFS_UNLOCKED
+    timeout /T 1 /NOBREAK >nul
+  )
+)
+:DEFS_UNLOCKED
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%DEFS_STAGE%\*' -DestinationPath '%DEFS_PK3%' -Force" >nul
 if errorlevel 1 (
   echo Error: failed to create %DEFS_PK3%

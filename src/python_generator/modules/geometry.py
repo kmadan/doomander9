@@ -13,6 +13,7 @@ class Room(Element):
         floor_height: int = 0,
         ceil_height: int = 128,
         tag: int = 0,
+        special: int = 0,
         light: int = 160,
     ) -> None:
         super().__init__(x, y)
@@ -24,6 +25,7 @@ class Room(Element):
         self.floor_height = floor_height
         self.ceil_height = ceil_height
         self.tag = tag
+        self.special = int(special) if special else 0
         self.light = int(light)
         self.cuts = {
             'top': [],
@@ -106,7 +108,8 @@ class Room(Element):
                              floor_height=self.floor_height,
                              ceil_height=self.ceil_height,
                              light=int(getattr(self, 'light', 160)),
-                             tag=self.tag)
+                             tag=self.tag,
+                             special=int(getattr(self, 'special', 0) or 0))
 
 class Corridor(Room):
     def __init__(self, x, y, width, height, floor_tex="FLOOR0_1", wall_tex="STONE2", ceil_tex="CEIL3_5", light: int = 160):

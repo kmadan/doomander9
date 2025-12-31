@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, cast
 from .level import Level
 from .geometry import Room, Corridor, Lawn
 from .connectors import Door, Window
@@ -79,7 +79,7 @@ class Wing:
                 door_side = 'right'
                 lawn_interface_x = corridor_x + self.corridor_width
             
-        corridor = level.add_room(Corridor(corridor_x, self.y, self.corridor_width, total_height))
+        corridor = cast(Corridor, level.add_room(Corridor(corridor_x, self.y, self.corridor_width, total_height)))
         corridor.floor_height = floor_height
         corridor.ceil_height = ceil_height
         if story_tag:
@@ -124,6 +124,63 @@ class Wing:
         else:
             door_x = rooms_x - self.wall_thickness
             level.add_connector(Door(door_x, door_y, self.wall_thickness, 64, bathroom, corridor, state=door_state))
+
+        # Bathroom exterior windows: multiple small windows on the wall opposite
+        # the corridor door.
+        # - If corridor is on the lawn side, the opposite wall faces the outside
+        #   (exterior_area).
+        # - If corridor is on the outside edge, the opposite wall faces the lawn.
+        bath_window_target = None
+        if self.corridor_on_lawn_side:
+            bath_window_target = exterior_area
+        else:
+            bath_window_target = lawn
+
+        # Fallback: create a thin outdoor strip adjacent to the bathroom wall
+        # so windows always have a valid target sector to cut into.
+        if bath_window_target is None:
+            window_box_depth = 64
+            if door_side == 'right':
+                # Door on right => windows on left.
+                wb_x = rooms_x - window_box_depth
+            else:
+                # Door on left => windows on right.
+                wb_x = rooms_x + self.room_width
+            bath_window_target = level.add_room(Lawn(wb_x, current_y, window_box_depth, bath_height))
+
+        # Window geometry (smaller than bedroom windows).
+        bath_span = 32
+        bath_sill_h = 48
+        bath_win_h = 32
+        bath_mid_tex = "MIDGRATE"
+
+        if door_side == 'right':
+            # Door on right => windows on left wall.
+            wx = rooms_x - self.wall_thickness
+        else:
+            # Door on left => windows on right wall.
+            wx = rooms_x + self.room_width
+
+        # Evenly spaced, grid-aligned offsets along the bathroom wall.
+        for oy in (96, 256, 416):
+            wy = current_y + int(oy)
+            level.add_connector(Window(
+                wx,
+                wy,
+                self.wall_thickness,
+                bath_span,
+                bathroom,
+                bath_window_target,
+                sill_height=bath_sill_h,
+                window_height=bath_win_h,
+                floor_tex=bathroom.floor_tex,
+                ceil_tex=bathroom.ceil_tex,
+                mid_tex=bath_mid_tex,
+                # On the main-floor story-tagged footprint, allow facade-mode so
+                # this window shows on 2nd/3rd story 3D floors too (carved by
+                # the facade-window filler bands).
+                facade_mode=("auto" if story_tag else "off"),
+            ))
             
         current_y += bath_height + self.wall_thickness
         
@@ -218,9 +275,6 @@ class Wing:
                     continue
 
                 target_room = _resolve_target_room(wy0, wy1)
-                if target_room is None:
-                    win_y += segment_height
-                    continue
 
                 wx = lawn_interface_x
                 if self.side == 'right':

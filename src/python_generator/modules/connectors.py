@@ -41,13 +41,14 @@ class Connector(Element):
             room.add_cut('bottom', (self.x + self.width) - room.x)
 
 class Door(Connector):
-    def __init__(self, x, y, width, height, room1, room2, texture="BIGDOOR2", state='closed', tag=0, linedef_action=1, light: int | None = None):
+    def __init__(self, x, y, width, height, room1, room2, texture="BIGDOOR2", state='closed', tag=0, linedef_action=1, light: int | None = None, secret: bool = False):
         super().__init__(x, y, width, height, room1, room2)
         self.texture = texture
         self.state = state
         self.tag = tag
         self.linedef_action = linedef_action
         self.light = int(light) if light is not None else None
+        self.secret = bool(secret)
             
     def build(self, builder):
         # Draw door sector (Closed: Ceiling = Floor)
@@ -133,6 +134,8 @@ class Door(Connector):
                 ld.tag = int(door_sector_tag)
                 # Set Unpegged
                 ld.upper_unpeg = True
+                if self.secret:
+                    ld.secret = True
                 pass
 
 class Switch(Element):
@@ -325,6 +328,8 @@ class Window(Connector):
         ceil_tex="CEIL3_5",
         wall_tex="STARTAN3",
         light: int | None = None,
+        mid_tex: str | None = None,
+        facade_mode: str = "auto",
     ):
         super().__init__(x, y, width, height, room1, room2)
         self.sill_height = sill_height
@@ -333,6 +338,11 @@ class Window(Connector):
         self.ceil_tex = ceil_tex
         self.wall_tex = wall_tex
         self.light = int(light) if light is not None else None
+        self.mid_tex = str(mid_tex) if mid_tex is not None else None
+        # "auto": detect facade windows (story-tagged -> outdoor sky) and use
+        # full-height + special tagging.
+        # "off": never treat this window as a facade window.
+        self.facade_mode = str(facade_mode or "auto").lower()
         
     def build(self, builder):
         # Draw window sector
@@ -382,12 +392,14 @@ class Window(Connector):
         facade_story_tag = 200
         is_facade = False
         tagged_room = None
-        if t1 == facade_story_tag and str(c2).upper() == 'F_SKY1':
-            is_facade = True
-            tagged_room = self.room1
-        elif t2 == facade_story_tag and str(c1).upper() == 'F_SKY1':
-            is_facade = True
-            tagged_room = self.room2
+
+        if self.facade_mode != "off":
+            if t1 == facade_story_tag and str(c2).upper() == 'F_SKY1':
+                is_facade = True
+                tagged_room = self.room1
+            elif t2 == facade_story_tag and str(c1).upper() == 'F_SKY1':
+                is_facade = True
+                tagged_room = self.room2
         if is_facade:
             window_tag = int(builder.alloc_facade_window_sector_tag())
         elif t1 and t1 == t2:
@@ -427,9 +439,10 @@ class Window(Connector):
             
             # Case 1: Front is Window, Back is Room.
             if front_sector == window_sector_index and back_sector != -1 and back_sector != window_sector_index:
-                # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
-                builder.editor.sidedefs[ld.front].tx_mid = "-"
-                builder.editor.sidedefs[ld.back].tx_mid = "-"
+                # Middle texture on a two-sided line can be used as bars/grates.
+                mid_tex = self.mid_tex if self.mid_tex else "-"
+                builder.editor.sidedefs[ld.front].tx_mid = mid_tex
+                builder.editor.sidedefs[ld.back].tx_mid = mid_tex
 
                 # Critical: ensure the wall above/below the window opening is
                 # rendered using upper/lower textures. Without this, the entire
@@ -443,9 +456,9 @@ class Window(Connector):
                 
             # Case 2: Back is Window, Front is Room.
             elif back_sector == window_sector_index and front_sector != window_sector_index:
-                # Clear mid texture on BOTH sides so the opening is not rendered as a solid wall.
-                builder.editor.sidedefs[ld.front].tx_mid = "-"
-                builder.editor.sidedefs[ld.back].tx_mid = "-"
+                mid_tex = self.mid_tex if self.mid_tex else "-"
+                builder.editor.sidedefs[ld.front].tx_mid = mid_tex
+                builder.editor.sidedefs[ld.back].tx_mid = mid_tex
 
                 # Ensure upper/lower textures exist so only the intended window
                 # span is open.
@@ -557,6 +570,97 @@ class WallSign(Connector):
                 sd_back.off_y = int(self.off_y)
             if self.lower_unpeg:
                 ld.lower_unpeg = True
+
+
+class ExitLine(Connector):
+    """Mark an existing wall segment as an exit.
+
+    This does NOT create any new sectors (avoids 2D overlaps). It just:
+    - Registers cuts so the wall is split to the requested span.
+    - Finds the resulting one-sided linedefs on that edge.
+    - Sets the linedef action (Doom format 11) and optionally a visible texture.
+    """
+
+    def __init__(
+        self,
+        *,
+        room: 'Room',
+        side: str,
+        offset: int,
+        span: int,
+        texture: str = 'SW1STRTN',
+    ) -> None:
+        super().__init__(int(room.x), int(room.y), 0, 0, room, None)
+        self.room = room
+        self.side = str(side)
+        self.offset = int(offset)
+        self.span = int(span)
+        self.texture = str(texture)
+
+    def register_cuts(self) -> None:
+        r = self.room
+        if r is None:
+            return
+
+        if self.side not in ('top', 'bottom', 'left', 'right'):
+            return
+
+        o0 = int(self.offset)
+        o1 = int(self.offset + self.span)
+        r.add_cut(self.side, o0)
+        r.add_cut(self.side, o1)
+
+    def build(self, builder) -> None:
+        r = self.room
+        if r is None:
+            return
+
+        # Segment bounds in world coords for matching linedefs.
+        if self.side in ('top', 'bottom'):
+            y_edge = int(r.y + r.height) if self.side == 'top' else int(r.y)
+            x0 = int(r.x + self.offset)
+            x1 = int(r.x + self.offset + self.span)
+            is_h = True
+        else:
+            x_edge = int(r.x + r.width) if self.side == 'right' else int(r.x)
+            y0 = int(r.y + self.offset)
+            y1 = int(r.y + self.offset + self.span)
+            is_h = False
+
+        def _v_xy(v):
+            return int(getattr(v, 'x', 0)), int(getattr(v, 'y', 0))
+
+        def _overlap_1d(a0: int, a1: int, b0: int, b1: int) -> bool:
+            return max(min(a0, a1), min(b0, b1)) < min(max(a0, a1), max(b0, b1))
+
+        for ld in builder.editor.linedefs:
+            # Only apply to one-sided boundary walls.
+            if getattr(ld, 'back', 0xFFFF) != 0xFFFF:
+                continue
+
+            v1 = builder.editor.vertexes[ld.vx_a]
+            v2 = builder.editor.vertexes[ld.vx_b]
+            (x_a, y_a) = _v_xy(v1)
+            (x_b, y_b) = _v_xy(v2)
+
+            if is_h:
+                if y_a != y_edge or y_b != y_edge:
+                    continue
+                if not _overlap_1d(x_a, x_b, x0, x1):
+                    continue
+            else:
+                if x_a != x_edge or x_b != x_edge:
+                    continue
+                if not _overlap_1d(y_a, y_b, y0, y1):
+                    continue
+
+            # Doom-format exit linedef.
+            ld.action = 11
+
+            # Make it visible as a switch panel.
+            sd_front = builder.editor.sidedefs[ld.front]
+            sd_front.tx_mid = self.texture
+            ld.lower_unpeg = True
 
 
 

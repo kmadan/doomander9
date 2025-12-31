@@ -9,6 +9,7 @@ if src_path not in sys.path:
 
 from builder import WadBuilder
 from hostel_generator import HostelGenerator
+from gameplay_populator import populate as populate_gameplay
 
 def main():
     print("Initializing WadBuilder...")
@@ -26,6 +27,10 @@ def main():
     generator = HostelGenerator(start_x=0, start_y=0)
     level = generator.generate()
     
+    # Populate monsters/items/objectives into the map.
+    # Must run before build so it can mark doors secret and add any connectors.
+    populate_gameplay(level, builder)
+
     print("Building Level...")
     level.build(builder)
 
@@ -84,17 +89,7 @@ def main():
     # Second floor is now implemented as a disconnected/off-map area connected
     # via line portals (so doors can be independent per floor).
     
-    print("Adding Player Start...")
-    # Spawn point is chosen by the generator (for fast iteration/testing).
-    spawn = getattr(level, "test_spawn", None)
-    if spawn and isinstance(spawn, (tuple, list)) and len(spawn) >= 2:
-        sx = int(spawn[0])
-        sy = int(spawn[1])
-        sa = int(spawn[2]) if len(spawn) >= 3 else 0
-        builder.add_player_start(sx, sy, sa)
-    else:
-        # Fallback: a safe spot in the lawn.
-        builder.add_player_start(256, 64, 0)
+    # Player start is handled by gameplay_populator (using generator's main gate spawn).
 
     # Always-visible debugging labels.
     
